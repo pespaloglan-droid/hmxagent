@@ -8,7 +8,11 @@
   --pg-text: var(--text, #edf0f7);
   --pg-muted: var(--text-secondary, #b5b1cd);
   --pg-accent: var(--accent, #9076ff);
-  --pg-control-border: color-mix(in srgb, var(--pg-muted) 60%, var(--pg-surface));
+  --pg-control-border: color-mix(
+    in srgb,
+    var(--pg-muted) 60%,
+    var(--pg-surface)
+  );
   --pg-ok: var(--ok, #72dcb0);
   --pg-error: var(--err, #ff8295);
   --pg-warn: var(--warn, #efc274);
@@ -387,7 +391,12 @@
 .hmx-skeleton-line {
   height: 20px;
   border-radius: 5px;
-  background: linear-gradient(90deg, var(--pg-hover), var(--pg-border), var(--pg-hover));
+  background: linear-gradient(
+    90deg,
+    var(--pg-hover),
+    var(--pg-border),
+    var(--pg-hover)
+  );
   background-size: 200% 100%;
   animation: hmx-shimmer 1.8s ease infinite;
 }
@@ -740,4 +749,24 @@
 .hmx-dialog input[aria-invalid="true"],
 .hmx-dialog textarea[aria-invalid="true"] {
   border-color: var(--pg-error);
+}
+
+/* Yol sütunu kırpılmaz: dar ekranda kendi tablo alanında kaydırılır. */
+.hmx-table td.hmx-path-cell {
+  min-width: 280px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.hmx-provider {
+  display: flex;
+  flex-direction: column;
+}
+.hmx-provider > .hmx-actions {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+/* Ekran okuyucu etiketlerinin konumu scroll panelinden dışarı taşmaz. */
+.hmx-log-row {
+  position: relative;
 }

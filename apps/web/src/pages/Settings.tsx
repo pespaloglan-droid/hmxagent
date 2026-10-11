@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useUiStore } from "../stores/uiStore";
+import { useSessionStore } from "../stores/sessionStore";
 import {
   KINDS,
   assertOk,
   kindLabel,
   useAction,
   useResource,
+  validHttpUrl,
   type Kind,
   type Settings,
+  type Health,
 } from "../components/pageData";
 import {
   Badge,
   Button,
   Card,
+  Dialog,
   Empty,
   ErrorState,
   Field,
@@ -22,82 +26,185 @@ import {
   Skeleton,
   Toast,
 } from "../components/ui";
-const defaultOrders: Record<Kind, string> = { image: "", video: "", audio: "", llm: "" };
+const emptyOrders: Record<Kind, string> = {
+  image: "",
+  video: "",
+  audio: "",
+  llm: "",
+};
+const policies = [
+  {
+    id: "strict",
+    title: "Sıkı",
+    description:
+      "Güvenli sohbet ve okuma dışında göreve başlamadan onay ister.",
+    example: "Örnek: medya üretimi için önce sorar.",
+  },
+  {
+    id: "balanced",
+    title: "Dengeli",
+    description:
+      "Gündelik görevler akıcıdır; yıkıcı işlemler için açık onay ister.",
+    example: "Örnek: dosya silme veya komut çalıştırma için sorar.",
+  },
+  {
+    id: "fast",
+    title: "Hızlı",
+    description:
+      "Gündelik işlerde minimum onay; yıkıcı işlemler yine onay gerektirir.",
+    example: "Örnek: sohbet beklemeden akar, shell komutu yine sorulur.",
+  },
+] as const;
 export function SettingsPage(): JSX.Element {
-  const settings = useResource<Settings>("/api/settings");
+  const resource = useResource<Settings>("/api/settings");
+  const health = useResource<Health>("/api/health");
+  const action = useAction();
   const [hours, setHours] = useState("6");
-  const [orders, setOrders] = useState(defaultOrders);
   const [mode, setMode] = useState<"strict" | "balanced" | "fast">("balanced");
-  const [validation, setValidation] = useState<Record<string, string>>({});
+  const [orders, setOrders] = useState(emptyOrders);
+  const [llm, setLlm] = useState({ baseUrl: "", model: "", apiKey: "" });
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
-  const action = useAction();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [tested, setTested] = useState("");
+  const [reset, setReset] = useState<1 | 2 | null>(null);
+  const [confirmation, setConfirmation] = useState("");
   useEffect(() => {
-    if (!settings.data || dirtyRef.current) return;
-    setHours(String((settings.data.quotaCooldownMs ?? 21_600_000) / 3_600_000));
-    setOrders({ ...defaultOrders, ...settings.data.orders });
-    setMode(settings.data.approvalMode ?? "balanced");
-  }, [settings.data]);
+    if (resource.data && !dirtyRef.current) {
+      setHours(String(resource.data.quotaCooldownMs / 3600000));
+      setOrders({ ...emptyOrders, ...resource.data.orders });
+      setMode(resource.data.approvalMode ?? "balanced");
+      setLlm({
+        baseUrl: resource.data.llm?.baseUrl ?? health.data?.llm?.baseUrl ?? "",
+        model: resource.data.llm?.model ?? health.data?.llm?.model ?? "",
+        apiKey: "",
+      });
+    }
+  }, [resource.data, health.data]);
   const changed = () => {
     dirtyRef.current = true;
     setDirty(true);
-    setValidation({});
+    setErrors({});
+    setTested("");
+  };
+  const validate = (onlyLlm = false): boolean => {
+    const next: Record<string, string> = {};
+    if (!validHttpUrl(llm.baseUrl.trim()))
+      next.baseUrl =
+        "Geçerli ve kimlik bilgisi içermeyen HTTP(S) adresi girin.";
+    if (!llm.model.trim()) next.model = "Model adı gerekli.";
+    if (!onlyLlm) {
+      if (
+        !hours.trim() ||
+        !Number.isFinite(Number(hours)) ||
+        Number(hours) < 1 ||
+        Number(hours) > 72
+      )
+        next.hours = "Bekleme süresi 1–72 saat arasında olmalı.";
+      for (const kind of KINDS) {
+        const ids = orders[kind].trim()
+          ? orders[kind].split(",").map((id) => id.trim())
+          : [];
+        if (ids.some((id) => !/^[a-zA-Z0-9_-]+$/.test(id)))
+          next[kind] =
+            "Kimlikleri virgülle ayırın; boş veya geçersiz kimlik kullanmayın.";
+        if (new Set(ids).size !== ids.length)
+          next[kind] = "Aynı sağlayıcıyı zincirde bir kez kullanın.";
+      }
+    }
+    setErrors(next);
+    return !Object.keys(next).length;
   };
   const save = () => {
-    const errors: Record<string, string> = {};
-    const value = Number(hours);
-    if (
-      !hours.trim() ||
-      !Number.isFinite(value) ||
-      value < 1 ||
-      !Number.isSafeInteger(Math.round(value * 3_600_000))
-    )
-      errors.hours = "En az 1 saat olan geçerli bir sayı girin.";
-    const normalized = { ...defaultOrders };
-    for (const kind of KINDS) {
-      const ids = orders[kind].trim() ? orders[kind].split(",").map((s) => s.trim()) : [];
-      if (ids.some((id) => !/^[a-zA-Z0-9_-]+$/.test(id)))
-        errors[kind] = "Kimlikleri virgülle ayırın; harf, rakam, tire ve alt çizgi kullanın.";
-      else if (new Set(ids).size !== ids.length)
-        errors[kind] = "Aynı sağlayıcıyı bir zincirde bir kez kullanın.";
-      normalized[kind] = ids.join(",");
-    }
-    if (!["strict", "balanced", "fast"].includes(mode))
-      errors.mode = "Geçerli bir onay modu seçin.";
-    setValidation(errors);
-    if (Object.keys(errors).length) return;
+    if (!validate()) return;
     void action.run("save", async () => {
-      // Yalnızca bu formun alanları gönderilir; LLM ve diğer ayarlar korunur.
+      const nextOrders = Object.fromEntries(
+        KINDS.map((kind) => [
+          kind,
+          orders[kind]
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean)
+            .join(","),
+        ]),
+      ) as Record<Kind, string>;
       assertOk(
         await api.post<{ ok: boolean; error?: string }>("/api/settings", {
-          quotaCooldownMs: Math.round(value * 3_600_000),
-          orders: normalized,
+          quotaCooldownMs: Math.round(Number(hours) * 3600000),
+          orders: nextOrders,
           approvalMode: mode,
+          llm: {
+            baseUrl: llm.baseUrl.trim(),
+            model: llm.model.trim(),
+            ...(llm.apiKey.trim() ? { apiKey: llm.apiKey.trim() } : {}),
+          },
         }),
       );
       dirtyRef.current = false;
       setDirty(false);
-      setOrders(normalized);
+      setOrders(nextOrders);
+      setLlm((old) => ({ ...old, apiKey: "" }));
       action.setNotice("Ayarlar kaydedildi.");
-      await settings.reload();
+      await resource.reload();
     });
+  };
+  const test = () => {
+    if (!validate(true)) return;
+    void action.run("test", async () => {
+      const result = assertOk(
+        await api.post<{ ok: boolean; reply: string; error?: string }>(
+          "/api/models/test",
+          {
+            baseUrl: llm.baseUrl.trim(),
+            model: llm.model.trim(),
+            ...(llm.apiKey.trim() ? { apiKey: llm.apiKey.trim() } : {}),
+          },
+        ),
+      );
+      setTested(result.reply);
+    });
+  };
+  const openDirectory = () =>
+    action.run("open", async () => {
+      if (window.hmxAPI?.openDataDir) {
+        assertOk(await window.hmxAPI.openDataDir());
+        action.setNotice("Veri dizini açıldı.");
+      } else {
+        if (!health.data?.home)
+          throw new Error("Veri dizini bilgisi alınamadı.");
+        await navigator.clipboard.writeText(health.data.home);
+        action.setNotice("Tarayıcı yerel dizin açamaz; dizin yolu kopyalandı.");
+      }
+    });
+  const resetSessions = () => {
+    useSessionStore.setState({ sessions: {}, activeSessionId: null });
+    useSessionStore.persist.clearStorage();
+    setReset(null);
+    setConfirmation("");
+    action.setNotice(
+      "Bu cihazdaki yerel oturum state'i sıfırlandı. Sunucu dosyaları korunuyor.",
+    );
   };
   return (
     <Page
       title="Ayarlar"
-      description="Kota beklemesini, yedek sağlayıcı sırasını ve ajanınızın onay politikasını düzenleyin."
+      description="Onay politikasını, üretim rotalarını ve model bağlantınızı tek noktadan yapılandırın."
     >
-      {settings.loading && !settings.data ? (
+      {resource.loading && !resource.data ? (
         <Skeleton rows={5} />
-      ) : settings.error ? (
-        <ErrorState message={settings.error} retry={() => void settings.reload()} />
-      ) : !settings.data ? (
+      ) : resource.error ? (
+        <ErrorState
+          message={resource.error}
+          retry={() => void resource.reload()}
+        />
+      ) : !resource.data ? (
         <Empty
-          icon="settings"
-          title="Ayarlar alınamadı"
-          description="Kurulum sihirbazıyla bağlantınızı yapılandırın."
+          title="Ayarlar henüz hazır değil"
+          description="Kurulum sihirbazıyla başlayın veya ayarları yeniden sorgulayın."
           action={
-            <Button onClick={() => useUiStore.getState().setWizardOpen(true)}>Kurulumu aç</Button>
+            <Button onClick={() => useUiStore.getState().setWizardOpen(true)}>
+              Kurulumu aç
+            </Button>
           }
         />
       ) : (
@@ -109,92 +216,168 @@ export function SettingsPage(): JSX.Element {
           }}
           noValidate
         >
-          <Notice>
-            Mevcut backend bekleme süresini dosyaya kaydeder fakat hesap havuzuna uygulamaz. Ayrıca
-            bir zinciri boşaltmak, çalışan sunucudaki önceki sıralamayı temizlemez. Bu davranışlar
-            backend düzeltmesi gerektirir.
-          </Notice>
+          <Card
+            title="Onay modu"
+            description="Araç düzeyindeki yıkıcı eylemler her modda ayrıca açık onay gerektirir."
+          >
+            <div
+              className="settings-policy"
+              role="radiogroup"
+              aria-label="Onay modu"
+            >
+              {policies.map((policy) => (
+                <button
+                  type="button"
+                  role="radio"
+                  key={policy.id}
+                  aria-checked={mode === policy.id}
+                  className="policy-option"
+                  disabled={!!action.busy}
+                  onClick={() => {
+                    changed();
+                    setMode(policy.id);
+                  }}
+                >
+                  <strong>{policy.title}</strong>
+                  <span>{policy.description}</span>
+                  <small>{policy.example}</small>
+                  {mode === policy.id && <Badge tone="ok">Seçili</Badge>}
+                </button>
+              ))}
+            </div>
+          </Card>
           <Card
             title="Kota bekleme süresi"
-            description="Kotası dolan hesabın yeniden kullanımdan önce bekleyeceği süre."
+            description="Kotası dolan hesabın yeniden kullanılmadan önce bekleyeceği süre."
           >
             <Field
               label="Bekleme süresi (saat)"
-              hint="Varsayılan: 6 saat. En az 1 saat girin."
-              error={validation.hours}
+              hint="1–72 saat. Varsayılan: 6 saat."
+              error={errors.hours}
             >
               <input
                 type="number"
-                min="1"
+                min={1}
+                max={72}
                 step="any"
-                inputMode="decimal"
                 value={hours}
                 disabled={!!action.busy}
                 onChange={(e) => {
                   changed();
                   setHours(e.target.value);
                 }}
-                aria-invalid={!!validation.hours}
               />
             </Field>
           </Card>
           <Card
             title="Yedek sağlayıcı zincirleri"
-            description="Virgülle ayrılmış sağlayıcı kimlikleri. Boş bırakırsanız otomatik tier sıralaması kullanılır."
+            description="Boş bırakılan zincirler otomatik tier sıralamasını kullanır."
           >
             <div className="hmx-grid">
               {KINDS.map((kind) => (
-                <Field key={kind} label={kindLabel(kind)} error={validation[kind]}>
-                  <input
-                    value={orders[kind]}
-                    disabled={!!action.busy}
-                    placeholder="Örnek: flow-ai,runway-web"
-                    aria-invalid={!!validation[kind]}
-                    onChange={(e) => {
-                      changed();
-                      setOrders((old) => ({ ...old, [kind]: e.target.value }));
-                    }}
-                  />
-                </Field>
+                <div key={kind}>
+                  <Field label={kindLabel(kind)} error={errors[kind]}>
+                    <input
+                      value={orders[kind]}
+                      disabled={!!action.busy}
+                      placeholder="flow-ai,runway-web"
+                      onChange={(e) => {
+                        changed();
+                        setOrders((old) => ({
+                          ...old,
+                          [kind]: e.target.value,
+                        }));
+                      }}
+                    />
+                  </Field>
+                  <div className="settings-chain">
+                    {orders[kind]
+                      .split(",")
+                      .map((id) => id.trim())
+                      .filter(Boolean)
+                      .map((id, i) => (
+                        <span key={`${id}-${i}`}>
+                          {i > 0 && <span aria-hidden="true"> → </span>}
+                          <Badge>{id}</Badge>
+                        </span>
+                      ))}
+                    {!orders[kind].trim() && <Badge>Otomatik sıralama</Badge>}
+                  </div>
+                </div>
               ))}
             </div>
           </Card>
           <Card
-            title="Onay politikası"
-            description="Hız ile kontrol arasındaki dengeyi seçin. Seçim, izin gereken eylemleri etkiler."
+            title="LLM bağlantısı"
+            description="OpenAI uyumlu servis. Test geçici form değerlerini kullanır; Kaydet varsayılanları günceller."
           >
-            <Field label="Onay modu" error={validation.mode}>
-              <select
-                value={mode}
-                disabled={!!action.busy}
-                onChange={(e) => {
-                  changed();
-                  setMode(e.target.value as typeof mode);
-                }}
+            <div className="hmx-form">
+              <Field label="Servis adresi" error={errors.baseUrl}>
+                <input
+                  type="url"
+                  value={llm.baseUrl}
+                  disabled={!!action.busy}
+                  onChange={(e) => {
+                    changed();
+                    setLlm((old) => ({ ...old, baseUrl: e.target.value }));
+                  }}
+                />
+              </Field>
+              <Field label="Model adı" error={errors.model}>
+                <input
+                  value={llm.model}
+                  disabled={!!action.busy}
+                  onChange={(e) => {
+                    changed();
+                    setLlm((old) => ({ ...old, model: e.target.value }));
+                  }}
+                />
+              </Field>
+              <Field
+                label="API anahtarı (isteğe bağlı)"
+                hint="Boş bırakılırsa kayıtlı anahtar korunur; anahtar bu arayüze geri gönderilmez."
               >
-                <option value="strict">Sıkı — güvenli okuma dışındaki eylemlerde sor</option>
-                <option value="balanced">Dengeli — yıkıcı eylemlerde sor</option>
-                <option value="fast">Hızlı — günlük işlerde minimum onay</option>
-              </select>
-            </Field>
-            {mode === "fast" && (
-              <Notice>
-                Hızlı mod daha az onay ister. Riskli veya hassas görevlerde Sıkı ya da Dengeli modu
-                tercih edin.
-              </Notice>
-            )}
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={llm.apiKey}
+                  disabled={!!action.busy}
+                  onChange={(e) => {
+                    changed();
+                    setLlm((old) => ({ ...old, apiKey: e.target.value }));
+                  }}
+                />
+              </Field>
+              <div className="hmx-actions">
+                <Button
+                  variant="secondary"
+                  icon="play"
+                  busy={action.busy === "test"}
+                  disabled={!!action.busy}
+                  onClick={test}
+                >
+                  Test et
+                </Button>
+                {tested && <Badge tone="ok">Bağlı: {tested}</Badge>}
+              </div>
+            </div>
           </Card>
           {action.error && (
             <Notice tone="error">
               {action.error}
-              <p>Değişiklikleriniz korunuyor. Yeniden kaydetmeyi deneyin.</p>
+              <p>Form değerleri korunuyor; işlemi yeniden deneyebilirsiniz.</p>
             </Notice>
           )}
           <div className="hmx-footer">
             <Badge tone={dirty ? "warn" : "neutral"}>
               {dirty ? "Kaydedilmemiş değişiklikler" : "Değişiklik yok"}
             </Badge>
-            <Button type="submit" icon="check" busy={!!action.busy} disabled={!dirty}>
+            <Button
+              type="submit"
+              icon="check"
+              busy={action.busy === "save"}
+              disabled={!dirty || !!action.busy}
+            >
               Ayarları kaydet
             </Button>
           </div>
@@ -212,7 +395,85 @@ export function SettingsPage(): JSX.Element {
           Sihirbazı aç
         </Button>
       </Card>
-      <Toast message={action.notice} onClose={() => action.setNotice("")} />
+      <Card
+        title="Tehlikeli bölge"
+        className="danger-zone"
+        description="Yerel oturum sıfırlama yalnızca bu cihazın tarayıcı state'ini siler; ~/.hmx içindeki dosyaları silmez."
+      >
+        <p className="hmx-mono">
+          {health.data?.home ?? "Veri dizini yükleniyor…"}
+        </p>
+        <div className="hmx-actions">
+          <Button
+            variant="secondary"
+            icon="file"
+            busy={action.busy === "open"}
+            onClick={() => void openDirectory()}
+          >
+            Veri dizinini aç
+          </Button>
+          <Button
+            variant="danger"
+            icon="trash"
+            onClick={() => {
+              setReset(1);
+              setConfirmation("");
+            }}
+          >
+            Yerel oturumları sıfırla
+          </Button>
+        </div>
+      </Card>
+      {reset && (
+        <Dialog title="Yerel oturumları sıfırla" onClose={() => setReset(null)}>
+          {reset === 1 ? (
+            <>
+              <Notice tone="error">
+                Bu cihazdaki tüm mesajlar, taslaklar ve oturum seçimleri
+                silinecek. Bu işlem geri alınamaz.
+              </Notice>
+              <div className="hmx-actions">
+                <Button variant="danger" onClick={() => setReset(2)}>
+                  Riski anladım — devam et
+                </Button>
+                <Button variant="secondary" onClick={() => setReset(null)}>
+                  Vazgeç
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="hmx-form">
+              <Field
+                label="İkinci onay"
+                hint="Devam etmek için OTURUMLARI SIFIRLA yazın."
+              >
+                <input
+                  value={confirmation}
+                  onChange={(e) => setConfirmation(e.target.value)}
+                  autoComplete="off"
+                />
+              </Field>
+              <Button
+                variant="danger"
+                disabled={confirmation !== "OTURUMLARI SIFIRLA"}
+                onClick={resetSessions}
+              >
+                Kalıcı olarak sıfırla
+              </Button>
+            </div>
+          )}
+        </Dialog>
+      )}
+      <Toast
+        message={
+          action.notice ||
+          (action.error ? `İşlem başarısız: ${action.error}` : "")
+        }
+        onClose={() => {
+          action.setNotice("");
+          action.clearError();
+        }}
+      />
     </Page>
   );
 }

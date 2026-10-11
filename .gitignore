@@ -4,3 +4,8 @@ dist/
 _refs/
 release/
 .env
+
+# Derlenmiş masaüstü çıktıları kaynak koddan yeniden üretilir.
+/apps/desktop/out/
+/.qa/
+/tests/.hmx-modules-*/

@@ -8,9 +8,10 @@ const config: Configuration = {
   files: ["out/**", "package.json"],
   extraResources: [
     { from: "../web/dist", to: "web-dist" },
+    { from: "assets/icon.png", to: "branding/icon.png" },
     { from: "../../config/providers", to: "config/providers" },
   ],
-  win: { target: ["nsis", "portable"] },
+  win: { icon: "assets/icon.ico", target: ["nsis", "portable"] },
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,

@@ -1,96 +1,209 @@
-import React, { useEffect, useState } from "react";
-import { api } from "../api";
+import { useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
-
-/** Contextual sag panel: sayfaya gore icerik (bos kutu degil) */
-export function RightInspector({ page }: { page: string }) {
-  const [routing, setRouting] = useState<any>(null);
-  const [health, setHealth] = useState<any>(null);
-
+import {
+  useResource,
+  kindLabel,
+  statusLabel,
+  KINDS,
+  type Health,
+  type Routing,
+} from "./pageData";
+import { Badge, Button, ErrorState, Icon, Skeleton } from "./ui";
+export function RightInspector({ page }: { page: string }): JSX.Element {
+  const health = useResource<Health>("/api/health");
+  const routing = useResource<Routing>("/api/routing");
+  const sessions = useSessionStore((s) => s.sessions);
+  const active = useSessionStore((s) => s.activeSessionId);
+  const session = active ? sessions[active] : null;
   useEffect(() => {
-    api.get("/api/routing").then(setRouting).catch(() => {});
-    api.get("/api/health").then(setHealth).catch(() => {});
-  }, [page]);
-
-  if (page === "chat") return <ChatInspector routing={routing} health={health} />;
-  if (page === "providers") return <ProvidersInspector routing={routing} />;
-  return <StatusInspector health={health} routing={routing} />;
-}
-
-function ChatInspector({ routing, health }: any) {
-  const activeId = useSessionStore((s) => s.activeSessionId);
-  const session = useSessionStore((s) => (s.activeSessionId ? s.sessions[s.activeSessionId] : null));
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      await Promise.all([health.reload(), routing.reload()]);
+      if (alive) timer = setTimeout(() => void refresh(), 15000);
+    };
+    void refresh();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [page, health.reload, routing.reload]);
+  const errors = Object.values(sessions)
+    .flatMap((s) =>
+      s.messages
+        .filter((m) => m.error)
+        .map((m) => ({ ...m, session: s.title })),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 3);
+  const accounts = routing.data?.accounts ?? [];
+  const circuits = routing.data?.circuits.filter((c) => c.open) ?? [];
   return (
-    <>
-      <div className="card">
-        <b>Aktif Oturum</b>
-        {session ? (
-          <>
-            <p style={{ marginBottom: 4 }}>{session.title}</p>
-            <p className="muted" style={{ fontSize: 12 }}>
-              {session.messages.length} mesaj · {session.activeTab} sekmesi
-            </p>
-            <p style={{ fontSize: 12 }}>
-              {session.selectedAgentId && <span className="badge">{session.selectedAgentId}</span>}{" "}
-              {session.selectedModelId && <span className="badge dim">{session.selectedModelId}</span>}
-            </p>
-          </>
-        ) : (
-          <p className="muted">Oturum seçili değil.</p>
-        )}
-      </div>
-      <div className="card">
-        <b>Sağlayıcı Durumu</b>
-        {(routing?.accounts ?? []).slice(0, 5).map((a: any) => (
-          <p key={a.id} style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
-            <span className={`dot ${a.status === "active" ? "ok" : a.status === "cooldown" ? "warn" : "err"}`} />
-            <span>{a.label}</span>
-            <span className="muted">{a.provider}</span>
-          </p>
-        ))}
-        {(routing?.accounts ?? []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>Hesap yok.</p>}
-      </div>
-      <div className="card">
-        <b>Token Saver</b>
-        <p style={{ fontSize: 13 }}>
-          <span className="badge ok">%{Math.round((routing?.tokenSaver?.savedRatio ?? 0) * 100)} tasarruf</span>
-        </p>
-        <p className="muted" style={{ fontSize: 11 }}>{routing?.tokenSaver?.compressedCount ?? 0} çıktı sıkıştırıldı</p>
-      </div>
-    </>
-  );
-}
-
-function ProvidersInspector({ routing }: any) {
-  const circuits = (routing?.circuits ?? []).filter((c: any) => c.open);
-  return (
-    <>
-      <div className="card">
-        <b>Zincir Özeti</b>
-        {Object.entries(routing?.order ?? {}).map(([kind, order]: any) => (
-          <p key={kind} style={{ fontSize: 12 }}>
-            <span className="badge dim">{kind}</span>{" "}
-            <span className="muted">{(order as string[]).join(" → ") || "—"}</span>
-          </p>
-        ))}
-      </div>
-      <div className="card">
-        <b>Devre Kesici</b>
-        {circuits.length === 0
-          ? <p className="muted" style={{ fontSize: 12 }}>Açık devre yok ✓</p>
-          : circuits.map((c: any) => <p key={c.id}><span className="badge err">{c.id}</span></p>)}
-      </div>
-    </>
-  );
-}
-
-function StatusInspector({ health, routing }: any) {
-  return (
-    <div className="card">
-      <b>Sistem Sağlığı</b>
-      <p style={{ fontSize: 12 }}>LLM: {health ? <span className="badge ok">{health.llm.model}</span> : <span className="badge err">yok</span>}</p>
-      <p style={{ fontSize: 12 }}>ffmpeg: {health?.ffmpeg ? <span className="badge ok">hazır</span> : <span className="badge err">yok</span>}</p>
-      <p style={{ fontSize: 12 }}>Hesaplar: {health?.quota?.accounts ?? 0} · cooldown: {health?.quota?.cooldown ?? 0}</p>
+    <div className="inspector" aria-label="Bağlam ve sistem durumu">
+      {(health.error || routing.error) && (
+        <ErrorState
+          message={health.error || routing.error}
+          retry={() => {
+            void health.reload();
+            void routing.reload();
+          }}
+        />
+      )}
+      {(health.loading && !health.data) ||
+      (routing.loading && !routing.data) ? (
+        <Skeleton rows={3} />
+      ) : (
+        <>
+          {page === "chat" && (
+            <>
+              <section className="card">
+                <h3>Aktif oturum</h3>
+                {session ? (
+                  <>
+                    <strong>{session.title}</strong>
+                    <p className="muted">
+                      {session.messages.length} mesaj ·{" "}
+                      {session.activeTab === "chat" ? "Sohbet" : "Varlıklar"}
+                    </p>
+                    <div className="hmx-tags">
+                      <Badge>{session.selectedAgentId ?? "HMX Native"}</Badge>
+                      <Badge>
+                        {session.selectedModelId?.replace(/^llm:/, "") ??
+                          health.data?.llm?.model ??
+                          "Varsayılan model"}
+                      </Badge>
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted">
+                    Bir oturum seçin veya yeni oturum başlatın.
+                  </p>
+                )}
+              </section>
+              <section className="card">
+                <h3>Hesap durumu</h3>
+                {accounts.length ? (
+                  accounts.map((account) => (
+                    <div
+                      className="inspector-row"
+                      key={`${account.provider}:${account.id}`}
+                    >
+                      <span
+                        className={`dot ${account.status === "active" ? "ok" : account.status === "cooldown" ? "warn" : "err"}`}
+                      />
+                      <span>{account.label}</span>
+                      <Badge
+                        tone={
+                          account.status === "active"
+                            ? "ok"
+                            : account.status === "cooldown"
+                              ? "warn"
+                              : "error"
+                        }
+                      >
+                        {statusLabel(account.status)}
+                      </Badge>
+                      <span className="muted">{account.provider}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">Henüz hesap tanımlanmamış.</p>
+                )}
+              </section>
+              <section className="card">
+                <h3>Token tasarrufu</h3>
+                <span className="hmx-stat">
+                  %
+                  {Math.round(
+                    (routing.data?.tokenSaver?.savedRatio ?? 0) * 100,
+                  )}
+                </span>
+                <p className="muted">
+                  {routing.data?.tokenSaver?.compressedCount ?? 0} çıktı
+                  sıkıştırıldı
+                </p>
+              </section>
+            </>
+          )}
+          {page === "providers" ? (
+            <>
+              <section className="card">
+                <h3>Yedek rota özeti</h3>
+                {KINDS.map((kind) => (
+                  <div key={kind}>
+                    <strong>{kindLabel(kind)}</strong>
+                    <p>
+                      {routing.data?.order[kind]?.length
+                        ? routing.data.order[kind].join(" → ")
+                        : "Sağlayıcı yok"}
+                    </p>
+                  </div>
+                ))}
+              </section>
+              <section className="card">
+                <h3>Açık devreler</h3>
+                {circuits.length ? (
+                  circuits.map((c) => (
+                    <p key={c.id}>
+                      <Badge tone="error">{c.id}</Badge>
+                    </p>
+                  ))
+                ) : (
+                  <p>
+                    <Icon name="check" /> Açık devre yok.
+                  </p>
+                )}
+              </section>
+            </>
+          ) : (
+            page !== "chat" && (
+              <section className="card">
+                <h3>Sistem sağlığı</h3>
+                <p>
+                  Dashboard:{" "}
+                  <Badge tone={health.data?.ok ? "ok" : "error"}>
+                    {health.data?.ok ? "Hazır" : "Veri yok"}
+                  </Badge>
+                </p>
+                <p>
+                  LLM: <span>{health.data?.llm?.model ?? "Tanımlanmamış"}</span>
+                </p>
+                <p className="muted">
+                  Model bağlantısını Modeller ekranında test edin.
+                </p>
+                <p>
+                  ffmpeg:{" "}
+                  <Badge tone={health.data?.ffmpeg ? "ok" : "warn"}>
+                    {health.data?.ffmpeg ? "Kullanılabilir" : "Bulunamadı"}
+                  </Badge>
+                </p>
+                <p>
+                  {health.data?.quota?.accounts ?? 0} hesap ·{" "}
+                  {health.data?.quota?.cooldown ?? 0} beklemede ·{" "}
+                  {health.data?.quota?.error ?? 0} hata
+                </p>
+              </section>
+            )
+          )}
+          {page !== "chat" && (
+            <section className="card">
+              <h3>Son yerel oturum hataları</h3>
+              {errors.length ? (
+                <ul className="inspector-errors">
+                  {errors.map((error) => (
+                    <li key={error.id}>
+                      <strong>{error.session}</strong>
+                      <p>{error.error}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">Kayıtlı yerel oturumlarda hata yok.</p>
+              )}
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { JobsPanel } from "../components/JobsPanel";
 import { useUiStore } from "../stores/uiStore";
 import {
   assertOk,
@@ -25,21 +26,29 @@ export function PipelinePage(): JSX.Element {
   const assets = useResource<Asset[]>("/api/assets");
   const [selected, setSelected] = useState<string[]>([]);
   const [voiceover, setVoiceover] = useState("");
-  const [result, setResult] = useState<{ out: string; durationSec: number } | null>(null);
+  const [result, setResult] = useState<{
+    out: string;
+    durationSec: number;
+  } | null>(null);
   const action = useAction();
   useEffect(() => {
     if (assets.data)
       setSelected((old) =>
         old.filter((file) =>
           assets.data?.some(
-            (a) => a.filePath === file && a.type === "video" && a.status === "verified",
+            (a) =>
+              a.filePath === file &&
+              a.type === "video" &&
+              a.status === "verified",
           ),
         ),
       );
   }, [assets.data]);
   const toggle = (file: string) => {
     setResult(null);
-    setSelected((old) => (old.includes(file) ? old.filter((x) => x !== file) : [...old, file]));
+    setSelected((old) =>
+      old.includes(file) ? old.filter((x) => x !== file) : [...old, file],
+    );
   };
   const move = (index: number, offset: number) => {
     setResult(null);
@@ -56,7 +65,10 @@ export function PipelinePage(): JSX.Element {
       setResult(null);
       const clips = selected.filter((file) =>
         assets.data?.some(
-          (a) => a.filePath === file && a.type === "video" && a.status === "verified",
+          (a) =>
+            a.filePath === file &&
+            a.type === "video" &&
+            a.status === "verified",
         ),
       );
       if (!clips.length || clips.length !== selected.length)
@@ -65,13 +77,15 @@ export function PipelinePage(): JSX.Element {
         );
       if (voiceover.trim() && !/\.(mp3|wav)$/i.test(voiceover.trim()))
         throw new Error("Seslendirme için .mp3 veya .wav dosya yolu girin.");
-      setResult(
-        assertOk(
-          await api.post<{ ok: boolean; out: string; durationSec: number; error?: string }>(
-            "/api/compose",
-            { clips, ...(voiceover.trim() ? { voiceover: voiceover.trim() } : {}) },
-          ),
-        ),
+      const job = await api.post<{ id: string }>("/api/jobs", {
+        kind: "compose",
+        prompt: JSON.stringify({
+          clips,
+          ...(voiceover.trim() ? { voiceover: voiceover.trim() } : {}),
+        }),
+      });
+      action.setNotice(
+        `İş kuyruğa eklendi: ${job.id}. Durumu aşağıdan takip edin.`,
       );
     });
   return (
@@ -99,7 +113,10 @@ export function PipelinePage(): JSX.Element {
           title="Kataloğunuz üretim bekliyor"
           description="Önce ajanla bir medya üretimi yapın. Doğrulanmış dosyalarınız burada listelenir."
           action={
-            <Button icon="plus" onClick={() => useUiStore.getState().setPage("chat")}>
+            <Button
+              icon="plus"
+              onClick={() => useUiStore.getState().setPage("chat")}
+            >
               Üretime başla
             </Button>
           }
@@ -128,7 +145,11 @@ export function PipelinePage(): JSX.Element {
                       <input
                         type="checkbox"
                         aria-label={`${a.filePath} klibini seç`}
-                        disabled={!!action.busy || a.status !== "verified" || a.type !== "video"}
+                        disabled={
+                          !!action.busy ||
+                          a.status !== "verified" ||
+                          a.type !== "video"
+                        }
                         checked={selected.includes(a.filePath)}
                         onChange={() => toggle(a.filePath)}
                       />
@@ -138,7 +159,7 @@ export function PipelinePage(): JSX.Element {
                     <Badge>{kindLabel(a.type)}</Badge>
                   </td>
                   <td className="hmx-mono">{a.provider}</td>
-                  <td className="hmx-mono">{a.filePath}</td>
+                  <td className="hmx-mono hmx-path-cell">{a.filePath}</td>
                   <td>
                     <Badge tone={a.status === "verified" ? "ok" : "warn"}>
                       {statusLabel(a.status)}
@@ -224,17 +245,25 @@ export function PipelinePage(): JSX.Element {
         <Notice tone="error">
           {action.error}
           <div className="hmx-actions">
-            <Button variant="secondary" busy={!!action.busy} onClick={() => void compose()}>
+            <Button
+              variant="secondary"
+              busy={!!action.busy}
+              onClick={() => void compose()}
+            >
               Yeniden dene
             </Button>
           </div>
         </Notice>
       )}
+      {action.notice && <Notice tone="ok">{action.notice}</Notice>}
+      <JobsPanel />
       {result && (
         <Notice tone="ok">
           <strong>Video hazır ve doğrulandı.</strong>
           <p className="hmx-mono">{result.out}</p>
-          <span>{result.durationSec} saniye · ffprobe doğrulaması başarılı</span>
+          <span>
+            {result.durationSec} saniye · ffprobe doğrulaması başarılı
+          </span>
         </Notice>
       )}
     </Page>

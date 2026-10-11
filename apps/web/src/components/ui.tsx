@@ -131,7 +131,11 @@ export function Button({
       disabled={disabled || busy}
       aria-busy={busy}
     >
-      {busy ? <span className="hmx-spinner" aria-hidden="true" /> : icon && <Icon name={icon} />}
+      {busy ? (
+        <span className="hmx-spinner" aria-hidden="true" />
+      ) : (
+        icon && <Icon name={icon} />
+      )}
       <span>{children}</span>
     </button>
   );
@@ -200,7 +204,11 @@ export function Badge({
 }
 export function Skeleton({ rows = 4 }: { rows?: number }): JSX.Element {
   return (
-    <div className="hmx-card hmx-skeleton" role="status" aria-label="Yükleniyor">
+    <div
+      className="hmx-card hmx-skeleton"
+      role="status"
+      aria-label="Yükleniyor"
+    >
       <span className="hmx-sr">Yükleniyor…</span>
       {Array.from({ length: rows }, (_, i) => (
         <div className="hmx-skeleton-line" key={i} />
@@ -238,8 +246,13 @@ export function Notice({
   tone?: "info" | "ok" | "error";
 }): JSX.Element {
   return (
-    <div className={`hmx-notice hmx-notice--${tone}`} role={tone === "error" ? "alert" : "status"}>
-      <Icon name={tone === "error" ? "alert" : tone === "ok" ? "check" : "file"} />
+    <div
+      className={`hmx-notice hmx-notice--${tone}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <Icon
+        name={tone === "error" ? "alert" : tone === "ok" ? "check" : "file"}
+      />
       <div>{children}</div>
     </div>
   );
@@ -273,10 +286,17 @@ export function Field({
   children: ReactNode;
 }): JSX.Element {
   const id = useId();
-  const control = isValidElement<Record<string, unknown>>(children) ? children : null;
-  const inputId = typeof control?.props.id === "string" ? control.props.id : `${id}-input`;
+  const control = isValidElement<Record<string, unknown>>(children)
+    ? children
+    : null;
+  const inputId =
+    typeof control?.props.id === "string" ? control.props.id : `${id}-input`;
   const describedBy =
-    [control?.props["aria-describedby"], hint ? `${id}-hint` : null, error ? `${id}-error` : null]
+    [
+      control?.props["aria-describedby"],
+      hint ? `${id}-hint` : null,
+      error ? `${id}-error` : null,
+    ]
       .filter(Boolean)
       .join(" ") || undefined;
   return (
@@ -298,11 +318,24 @@ export function Field({
     </div>
   );
 }
-export function Table({ children, label }: { children: ReactNode; label: string }): JSX.Element {
+export function Table({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}): JSX.Element {
   return (
     <div>
-      <p className="hmx-table-hint">Tüm sütunları görmek için tabloyu yana kaydırın.</p>
-      <div className="hmx-table-wrap" role="region" aria-label={label} tabIndex={0}>
+      <p className="hmx-table-hint">
+        Tüm sütunları görmek için tabloyu yana kaydırın.
+      </p>
+      <div
+        className="hmx-table-wrap"
+        role="region"
+        aria-label={label}
+        tabIndex={0}
+      >
         <table className="hmx-table">{children}</table>
       </div>
     </div>
@@ -323,8 +356,11 @@ export function Toast({
     return () => clearTimeout(timer);
   }, [message]);
   return message ? (
-    <div className="hmx-toast" role="status">
-      <Icon name="check" />
+    <div
+      className={`hmx-toast ${message.startsWith("İşlem başarısız") ? "hmx-toast-error" : ""}`}
+      role="status"
+    >
+      <Icon name={message.startsWith("İşlem başarısız") ? "alert" : "check"} />
       <span>{message}</span>
       <button type="button" aria-label="Bildirimi kapat" onClick={onClose}>
         <Icon name="close" />

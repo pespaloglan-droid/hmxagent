@@ -1,3 +1,5 @@
+> **Güncelleme:** Bu belge ilk GÖREV 08 tesliminin tarihsel kaydıdır. Güncel tüm paket, backend düzeltmeleri ve test sonucu için [profesyonelleştirme raporunu](../professionalization/README.md) okuyun. Kota bekleme ayarının uygulanmaması, boş zincirin temizlenmemesi ve kayıtlı LLM anahtarının uygulanmaması bu yeni pakette düzeltildi.
+
 # GÖREV 08 — Doğrulama raporu
 
 ## Sonuç

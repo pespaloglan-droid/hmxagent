@@ -4,9 +4,12 @@ import { api } from "../api";
 export type Kind = "image" | "video" | "audio" | "llm";
 export const KINDS: Kind[] = ["image", "video", "audio", "llm"];
 export const kindLabel = (value: string): string =>
-  ({ image: "Görsel", video: "Video", audio: "Ses", llm: "Dil modeli" })[value] ?? value;
+  ({ image: "Görsel", video: "Video", audio: "Ses", llm: "Dil modeli" })[
+    value
+  ] ?? value;
 export const tierLabel = (value: string): string =>
-  ({ subscription: "Abonelik", cheap: "Ekonomik", free: "Ücretsiz" })[value] ?? value;
+  ({ subscription: "Abonelik", cheap: "Ekonomik", free: "Ücretsiz" })[value] ??
+  value;
 export const statusLabel = (value: string): string =>
   ({
     active: "Aktif",
@@ -17,19 +20,28 @@ export const statusLabel = (value: string): string =>
     missing: "Eksik",
   })[value] ?? value;
 export const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : "İşlem tamamlanamadı. Lütfen yeniden deneyin.";
+  error instanceof Error
+    ? error.message
+    : "İşlem tamamlanamadı. Lütfen yeniden deneyin.";
 export const segment = (value: string): string => encodeURIComponent(value);
 export function dateLabel(value?: string | number | null): string {
   if (value == null || value === "") return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
-    : new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(date);
+    : new Intl.DateTimeFormat("tr-TR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(date);
 }
 export function validHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+    return (
+      ["http:", "https:"].includes(url.protocol) &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }
@@ -107,6 +119,10 @@ export interface Asset {
   status: string;
 }
 export interface ModelEntry {
+  available?: boolean;
+  reason?: string;
+  source?: string;
+  registryId?: string;
   id: string;
   provider?: string;
   authMode?: string;
@@ -118,7 +134,8 @@ export interface ApiResult {
   error?: string;
 }
 export function assertOk<T extends ApiResult>(result: T): T {
-  if (!result.ok) throw new Error(result.error ?? "Sunucu işlemi tamamlayamadı.");
+  if (!result.ok)
+    throw new Error(result.error ?? "Sunucu işlemi tamamlayamadı.");
   return result;
 }
 
@@ -129,7 +146,9 @@ export function useResource<T>(path: string | null, initial: T | null = null) {
   const [error, setError] = useState("");
   const generation = useRef(0);
   const mounted = useRef(false);
-  const inFlight = useRef<{ path: string; promise: Promise<T | null> } | null>(null);
+  const inFlight = useRef<{ path: string; promise: Promise<T | null> } | null>(
+    null,
+  );
   const reload = useCallback((): Promise<T | null> => {
     if (!path) return Promise.resolve(null);
     if (inFlight.current?.path === path) return inFlight.current.promise;
@@ -143,7 +162,8 @@ export function useResource<T>(path: string | null, initial: T | null = null) {
         return next;
       })
       .catch((cause: unknown) => {
-        if (mounted.current && request === generation.current) setError(errorMessage(cause));
+        if (mounted.current && request === generation.current)
+          setError(errorMessage(cause));
         return null;
       })
       .finally(() => {
@@ -200,5 +220,12 @@ export function useAction() {
       if (mounted.current) setBusy(null);
     }
   };
-  return { busy, error, notice, run, setNotice, clearError: () => setError("") };
+  return {
+    busy,
+    error,
+    notice,
+    run,
+    setNotice,
+    clearError: () => setError(""),
+  };
 }

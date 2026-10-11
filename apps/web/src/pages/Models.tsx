@@ -28,7 +28,10 @@ export function ModelsPage(): JSX.Element {
   const catalog = useResource<ModelCatalog>("/api/models");
   const action = useAction();
   const [form, setForm] = useState({ baseUrl: "", model: "", apiKey: "" });
-  const [validation, setValidation] = useState<{ baseUrl?: string; model?: string }>({});
+  const [validation, setValidation] = useState<{
+    baseUrl?: string;
+    model?: string;
+  }>({});
   const [reply, setReply] = useState("");
   const dirty = useRef(false);
   useEffect(() => {
@@ -48,7 +51,8 @@ export function ModelsPage(): JSX.Element {
   const validate = () => {
     const errors: typeof validation = {};
     if (!validHttpUrl(form.baseUrl.trim()))
-      errors.baseUrl = "Kimlik bilgisi içermeyen geçerli bir HTTP(S) adresi girin.";
+      errors.baseUrl =
+        "Kimlik bilgisi içermeyen geçerli bir HTTP(S) adresi girin.";
     if (!form.model.trim()) errors.model = "Model adı boş bırakılamaz.";
     setValidation(errors);
     return Object.keys(errors).length === 0;
@@ -63,7 +67,11 @@ export function ModelsPage(): JSX.Element {
         model: form.model.trim(),
         ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
       };
-      assertOk(await api.post<{ ok: boolean; error?: string }>("/api/settings", { llm }));
+      assertOk(
+        await api.post<{ ok: boolean; error?: string }>("/api/settings", {
+          llm,
+        }),
+      );
       dirty.current = false;
       setForm((old) => ({ ...old, apiKey: "" }));
       action.setNotice("Model ayarları kaydedildi.");
@@ -76,13 +84,16 @@ export function ModelsPage(): JSX.Element {
     void action.run("test", async () => {
       setReply("");
       const result = assertOk(
-        await api.post<{ ok: boolean; reply: string; error?: string }>("/api/models/test", {
-          baseUrl: form.baseUrl.trim(),
-          model: form.model.trim(),
-          ...(form.apiKey.trim() || settings.data?.llm?.apiKey
-            ? { apiKey: form.apiKey.trim() || settings.data?.llm?.apiKey }
-            : {}),
-        }),
+        await api.post<{ ok: boolean; reply: string; error?: string }>(
+          "/api/models/test",
+          {
+            baseUrl: form.baseUrl.trim(),
+            model: form.model.trim(),
+            ...(form.apiKey.trim() || settings.data?.llm?.apiKey
+              ? { apiKey: form.apiKey.trim() || settings.data?.llm?.apiKey }
+              : {}),
+          },
+        ),
       );
       setReply(result.reply);
     });
@@ -95,7 +106,10 @@ export function ModelsPage(): JSX.Element {
       {settings.loading && !settings.data ? (
         <Skeleton />
       ) : settings.error ? (
-        <ErrorState message={settings.error} retry={() => void settings.reload()} />
+        <ErrorState
+          message={settings.error}
+          retry={() => void settings.reload()}
+        />
       ) : (
         <Card
           title="Dil modeli bağlantısı"
@@ -103,7 +117,8 @@ export function ModelsPage(): JSX.Element {
         >
           {!settings.data?.llm?.model && (
             <Notice>
-              Henüz kaydedilmiş bir model bağlantısı yok. Aşağıdaki formdan bağlantınızı ekleyin.
+              Henüz kaydedilmiş bir model bağlantısı yok. Aşağıdaki formdan
+              bağlantınızı ekleyin.
             </Notice>
           )}
           <form
@@ -128,7 +143,11 @@ export function ModelsPage(): JSX.Element {
                 disabled={!!action.busy}
               />
             </Field>
-            <Field label="Model adı" hint="Örnek: qwen2.5:14b" error={validation.model}>
+            <Field
+              label="Model adı"
+              hint="Örnek: qwen2.5:14b"
+              error={validation.model}
+            >
               <input
                 value={form.model}
                 onChange={(e) => change("model", e.target.value)}
@@ -139,7 +158,7 @@ export function ModelsPage(): JSX.Element {
             </Field>
             <Field
               label="API anahtarı (isteğe bağlı)"
-              hint="Boş bırakırsanız kayıtlı anahtar korunur. Anahtar gösterilmez. Bu backend sürümünde sohbet için HMX_LLM_API_KEY ortam değişkeni gerekir."
+              hint="Boş bırakırsanız kayıtlı anahtar korunur. Anahtar gösterilmez. Kaydedilen anahtar sunucudaki sohbet bağlantısına uygulanır."
             >
               <input
                 type="password"
@@ -173,7 +192,8 @@ export function ModelsPage(): JSX.Element {
             <Notice tone="error">
               {action.error}
               <p>
-                Bilgileri kontrol edip Kaydet veya Bağlantıyı test et düğmesini yeniden kullanın.
+                Bilgileri kontrol edip Kaydet veya Bağlantıyı test et düğmesini
+                yeniden kullanın.
               </p>
             </Notice>
           )}
@@ -183,13 +203,20 @@ export function ModelsPage(): JSX.Element {
       {catalog.loading && !catalog.data ? (
         <Skeleton rows={3} />
       ) : catalog.error ? (
-        <ErrorState message={catalog.error} retry={() => void catalog.reload()} />
+        <ErrorState
+          message={catalog.error}
+          retry={() => void catalog.reload()}
+        />
       ) : KINDS.every((kind) => !catalog.data?.[kind]?.length) ? (
         <Empty
           title="Kayıtlı model yok"
           description="Bir sağlayıcı ekleyin veya mevcut model kayıtlarını yenileyin."
           action={
-            <Button variant="secondary" icon="refresh" onClick={() => void catalog.reload()}>
+            <Button
+              variant="secondary"
+              icon="refresh"
+              onClick={() => void catalog.reload()}
+            >
               Modelleri yenile
             </Button>
           }
@@ -197,7 +224,7 @@ export function ModelsPage(): JSX.Element {
       ) : (
         <Card
           title="Kayıtlı modeller"
-          description="Bu liste yapılandırılmış kayıtları gösterir; erişilebilirlik bağlantı testiyle doğrulanır."
+          description="LLM modelleri endpoint üzerinden keşfedilir. Medya kullanılabilirliği hesap veya anahtar durumuna dayanır; üretim garantisi değildir."
           actions={
             <Button
               variant="secondary"
@@ -218,8 +245,18 @@ export function ModelsPage(): JSX.Element {
                     <div className="hmx-tags" key={entry.id}>
                       <Badge>{entry.id}</Badge>
                       {entry.tier && <Badge>{tierLabel(entry.tier)}</Badge>}
+                      {entry.available !== undefined && (
+                        <Badge tone={entry.available ? "ok" : "warn"}>
+                          {entry.available ? "Kullanılabilir" : "Pasif"}
+                        </Badge>
+                      )}
+                      {entry.reason && (
+                        <span className="hmx-muted">{entry.reason}</span>
+                      )}
                       {entry.provider && (
-                        <span className="hmx-muted hmx-mono">{entry.provider}</span>
+                        <span className="hmx-muted hmx-mono">
+                          {entry.provider}
+                        </span>
                       )}
                     </div>
                   ))

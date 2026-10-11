@@ -1,0 +1,219 @@
+{
+  "results": [
+    {
+      "name": "chat: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "chat: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "sessions: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "sessions: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "servers: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "servers: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "providers: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "providers: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "models: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "models: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "pipeline: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "pipeline: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "logs: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "logs: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "settings: masaüstü tam uygulama ve logo",
+      "ok": true
+    },
+    {
+      "name": "settings: 390px mobil taşma yok",
+      "ok": true
+    },
+    {
+      "name": "Composer: boş/busy, Shift+Enter, IME ve @ klavye seçimi",
+      "ok": true
+    },
+    {
+      "name": "MessageList: markdown, tarih, kod kopyası ve güvenli HTML/link",
+      "ok": true
+    },
+    {
+      "name": "Chat: SSE hata, kısmi çıktı, retry aynı kullanıcı ve EOF bildirimi",
+      "ok": true
+    },
+    {
+      "name": "Chat: inline görev onayı, SSE ticket ve medya queue isteği",
+      "ok": true
+    },
+    {
+      "name": "Chat: oturumlar arası taslak, seçim, sekmeler ve gallery boş hali",
+      "ok": true
+    },
+    {
+      "name": "SessionPanel: son mesaj araması, rename, klavye ve inline delete",
+      "ok": true
+    },
+    {
+      "name": "Palette: Ctrl+K, fuzzy prv, mark, recent ve Escape",
+      "ok": true
+    },
+    {
+      "name": "Providers: 5 sekme, kartlar, JSON validation ve browser login",
+      "ok": true
+    },
+    {
+      "name": "Providers: loading, empty ve error/retry",
+      "ok": true
+    },
+    {
+      "name": "Logs: arama, renkler, canlı takip ve duraklat",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: doğrulanmış seçim, sıralama, Job 202 ve cancel/retry UI",
+      "ok": true
+    },
+    {
+      "name": "Settings: 3 policy, quota validation, secret mask ve saved toast",
+      "ok": true
+    },
+    {
+      "name": "Settings: yinelenen fallback ve error toast form değerlerini korur",
+      "ok": true
+    },
+    {
+      "name": "Settings: iki onaylı reset sadece session state siler ve wizard açılır",
+      "ok": true
+    },
+    {
+      "name": "Mobil: menü, oturum ve inspector erişilebilir; seçili son sekme görünür",
+      "ok": true
+    },
+    {
+      "name": "sessions: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "sessions: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "sessions: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "servers: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "servers: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "servers: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "providers: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "providers: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "providers: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "models: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "models: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "models: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "pipeline: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "pipeline: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "pipeline: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "logs: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "logs: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "logs: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "settings: ilk yüklemede skeleton",
+      "ok": true
+    },
+    {
+      "name": "settings: API hatası ve retry",
+      "ok": true
+    },
+    {
+      "name": "settings: boş kaynak ve aksiyon",
+      "ok": true
+    },
+    {
+      "name": "Arayüz çalışma zamanı hatası yok",
+      "ok": true
+    }
+  ],
+  "issues": [],
+  "pass": 53,
+  "fail": 0
+}
