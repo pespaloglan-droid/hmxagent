@@ -1,0 +1,22 @@
+{
+  "name": "@hmx/cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "hmx": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@hmx/core": "workspace:*",
+    "@hmx/agent-core": "workspace:*",
+    "@hmx/providers": "workspace:*",
+    "@hmx/router": "workspace:*",
+    "@hmx/media": "workspace:*",
+    "@hmx/dashboard-api": "workspace:*",
+    "commander": "^12.1.0"
+  }
+}

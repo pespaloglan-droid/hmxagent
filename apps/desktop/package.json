@@ -1,0 +1,31 @@
+{
+  "name": "@hmx/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./out/main/index.js",
+  "description": "HMX Agent masaustu uygulamasi (Electron)",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && npm run build:server",
+    "build:server": "esbuild src/main/server.ts --bundle --platform=node --format=cjs --external:playwright --external:playwright-core --define:import.meta.url=__import_meta_url --banner:js=\"const __import_meta_url = require('node:url').pathToFileURL(__filename).href;\" --outfile=out/server.cjs",
+    "package:win": "npm run build && electron-builder --win --config electron-builder.config.ts",
+    "package:win:portable": "npm run build && electron-builder --win portable --config electron-builder.config.ts"
+  },
+  "dependencies": {
+    "@hmx/core": "workspace:*",
+    "@hmx/agent-core": "workspace:*",
+    "@hmx/providers": "workspace:*",
+    "@hmx/router": "workspace:*",
+    "@hmx/media": "workspace:*",
+    "@hmx/dashboard-api": "workspace:*",
+    "electron-log": "^5.2.0",
+    "electron-context-menu": "^4.0.5",
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-vite": "^4.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0"
+  }
+}

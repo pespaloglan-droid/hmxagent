@@ -1,0 +1,5 @@
+name: hmx-hermes-pack
+version: 1.0.0
+description: "HMX Agent koprusu: Hermes icinden HMX dashboard API'sine medya uretimi ve hesap havuzu durumu (hmx_generate / hmx_accounts)."
+author: HMX
+kind: tool

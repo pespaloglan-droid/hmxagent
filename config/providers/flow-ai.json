@@ -1,0 +1,19 @@
+{
+  "id": "flow-ai",
+  "kind": "video",
+  "authMode": "browser-session",
+  "tier": "free",
+  "baseUrl": "https://labs.google/fx/tr/tools/flow",
+  "description": "Google Flow (Veo) video uretimi — tarayici oturumu ile, API anahtarsiz",
+  "loginCheck": { "failUrlContains": "accounts.google.com" },
+  "selectors": {
+    "promptInput": "textarea",
+    "aspectSelect": "select[aria-label*='aspect'], select[aria-label*='Aspect']",
+    "submitButton": "button[aria-label*='reate'], button[type='submit']",
+    "resultItem": "video, img[alt*='result'], [data-testid*='result']",
+    "downloadButton": "button[aria-label*='ownload'], a[download]"
+  },
+  "timeouts": { "generateMs": 300000 },
+  "quotaIndicators": ["quota exceeded", "kota doldu", "rate limit", "usage limit reached", "You've reached your"],
+  "_not": "Google Flow arayuzu degisirse SADECE bu dosyadaki selector'lari guncelle. Ilk kullanim: hmx login flow-ai"
+}

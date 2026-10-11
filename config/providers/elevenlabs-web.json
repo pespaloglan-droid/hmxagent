@@ -1,0 +1,19 @@
+{
+  "id": "elevenlabs-web",
+  "kind": "audio",
+  "authMode": "browser-session",
+  "tier": "free",
+  "baseUrl": "https://elevenlabs.io/app/speech-synthesis/text-to-speech",
+  "description": "ElevenLabs TTS — tarayici oturumu ile, API anahtarsiz",
+  "loginCheck": { "failUrlContains": "sign-in" },
+  "selectors": {
+    "promptInput": "textarea",
+    "voicePicker": "[data-testid='voice-picker'], button:has-text('Voice')",
+    "submitButton": "button:has-text('Generate speech'), button[type='submit']",
+    "resultItem": "audio, [data-testid*='audio-player']",
+    "downloadButton": "button[aria-label*='ownload'], a[download]"
+  },
+  "timeouts": { "generateMs": 180000 },
+  "quotaIndicators": ["quota exceeded", "kota doldu", "rate limit", "usage limit", "credits remaining: 0"],
+  "_not": "ElevenLabs arayuzu degisirse SADECE bu dosyadaki selector'lari guncelle. Ilk kullanim: hmx login elevenlabs-web"
+}

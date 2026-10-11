@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/agent-core" },
+    { "path": "packages/providers" },
+    { "path": "packages/router" },
+    { "path": "packages/media" },
+    { "path": "packages/dashboard-api" },
+    { "path": "apps/cli" }
+  ]
+}

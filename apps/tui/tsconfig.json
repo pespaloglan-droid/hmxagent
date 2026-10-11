@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "composite": false,
+    "baseUrl": ".",
+    "paths": {
+      "@hmx/core": ["../../packages/core/src/index.ts"],
+      "@hmx/agent-core": ["../../packages/agent-core/src/index.ts"],
+      "@hmx/providers": ["../../packages/providers/src/index.ts"],
+      "@hmx/router": ["../../packages/router/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/agent-core" },
+    { "path": "../../packages/providers" },
+    { "path": "../../packages/router" }
+  ]
+}

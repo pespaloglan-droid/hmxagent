@@ -1,0 +1,36 @@
+{
+  "name": "hmx-agent",
+  "private": true,
+  "version": "1.0.0",
+  "description": "HMX Agent - Disiplinli, dogrulama odakli kisisel AI agent platformu",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json && pnpm --filter @hmx/web build",
+    "test": "tsx tests/run.ts && tsx --test tests/registry.spec.ts",
+    "dev": "tsx apps/cli/src/index.ts",
+    "hmx": "tsx apps/cli/src/index.ts",
+    "setup": "node scripts/setup.cjs",
+    "dashboard": "tsx apps/cli/src/index.ts dashboard",
+    "package:win": "pnpm --filter @hmx/desktop package:win",
+    "package:win:portable": "pnpm --filter @hmx/desktop package:win:portable"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "execa": "^9.5.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "playwright": "^1.49.1"
+  },
+  "dependencies": {
+    "@hmx/core": "workspace:*",
+    "@hmx/agent-core": "workspace:*",
+    "@hmx/providers": "workspace:*",
+    "@hmx/router": "workspace:*",
+    "@hmx/media": "workspace:*",
+    "@hmx/dashboard-api": "workspace:*"
+  }
+}

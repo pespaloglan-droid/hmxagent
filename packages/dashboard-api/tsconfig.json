@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@hmx/core": ["../core/src/index.ts"],
+      "@hmx/agent-core": ["../agent-core/src/index.ts"],
+      "@hmx/providers": ["../providers/src/index.ts"],
+      "@hmx/router": ["../router/src/index.ts"],
+      "@hmx/media": ["../media/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../agent-core" },
+    { "path": "../providers" },
+    { "path": "../router" },
+    { "path": "../media" }
+  ]
+}
