@@ -1,16 +1,35 @@
 // Based on opencode-dev/packages/desktop (MIT) — main process deseni:
 // tek ornek kilidi, sunucu spawn, koyu tema pencere, tray, temiz kapanis.
 // Startup safety layer: her baslatma hatasi loglanir, recovery penceresi sunulur.
-import { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } from "electron";
+import {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  nativeImage,
+  shell,
+  dialog,
+  ipcMain,
+} from "electron";
 import contextMenu from "electron-context-menu";
 import log from "electron-log/main";
+import { getLogger } from "@hmx/core";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { spawnDashboardServer, waitForServer, type ServerHandle } from "./spawn-server";
+import {
+  spawnDashboardServer,
+  waitForServer,
+  type ServerHandle,
+} from "./spawn-server";
 
 const HMX_HOME = process.env.HMX_HOME ?? path.join(os.homedir(), ".hmx");
 const CRASH_DIR = path.join(HMX_HOME, "logs");
+const startupLogger = getLogger("startup");
+const crashLogger = getLogger("crash");
+const iconPath = app.isPackaged
+  ? path.join(process.resourcesPath, "branding", "icon.png")
+  : path.join(__dirname, "../../assets/icon.png");
 
 log.initialize();
 log.transports.file.resolvePathFn = () => path.join(CRASH_DIR, "desktop.log");
@@ -26,14 +45,32 @@ process.on("unhandledRejection", (e) => {
 });
 
 function writeCrashLog(kind: string, err: unknown) {
-  try {
-    fs.mkdirSync(CRASH_DIR, { recursive: true });
-    fs.appendFileSync(
-      path.join(CRASH_DIR, "crash.log"),
-      `[${new Date().toISOString()}] ${kind}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
-    );
-  } catch { /* log dizini de yazilamiyorsa yapacak bir sey yok */ }
+  crashLogger.error(kind, {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
 }
+
+ipcMain.handle("hmx:open-data-dir", async (event) => {
+  // Sadece kendi üst frame'i; yol renderer tarafından gönderilemez.
+  if (
+    !win ||
+    event.sender !== win.webContents ||
+    !server ||
+    event.senderFrame?.url.split("#")[0] !== `http://127.0.0.1:${server.port}/`
+  )
+    return { ok: false, error: "Yetkisiz pencere." };
+  try {
+    fs.mkdirSync(HMX_HOME, { recursive: true });
+    const error = await shell.openPath(HMX_HOME);
+    return error ? { ok: false, error } : { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+});
 
 contextMenu({ showLookUpSelection: false, showCopyImage: true });
 
@@ -79,21 +116,29 @@ function recoverState() {
 
 function showRecoveryWindow(err: unknown) {
   const rec = new BrowserWindow({
-    width: 640, height: 420, title: "HMX Agent — Kurtarma",
+    width: 640,
+    height: 420,
+    title: "HMX Agent — Kurtarma",
     backgroundColor: "#0d0a1a",
     webPreferences: { nodeIntegration: false },
   });
-  const detail = String(err instanceof Error ? err.message : err).replace(/</g, "&lt;");
-  rec.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+  const detail = String(err instanceof Error ? err.message : err).replace(
+    /</g,
+    "&lt;",
+  );
+  rec.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(`
     <body style="background:#0d0a1a;color:#e8e6f5;font-family:Segoe UI,sans-serif;padding:40px">
       <h2>HMX Agent baslatilamadi</h2>
       <p style="color:#8b86ad">Hata: ${detail}</p>
       <p style="color:#8b86ad">Crash logu: ${CRASH_DIR.replace(/\\/g, "\\\\")}\\crash.log</p>
       <p>Bozuk ayar dosyalari kenara tasinip uygulama temiz baslatilabilir.</p>
-    </body>`)}`);
+    </body>`)}`,
+  );
   const choice = dialog.showMessageBoxSync(rec, {
     type: "error",
     title: "HMX Agent",
+    icon: iconPath,
     message: "Baslatma hatasi",
     detail: "Ayarlar yedeklenip temiz baslatilsin mi (recovery mode)?",
     buttons: ["Temiz baslat (recovery)", "Kapat"],
@@ -120,6 +165,7 @@ async function createWindow() {
     width: 1440,
     height: 900,
     title: "HMX Agent",
+    icon: iconPath,
     backgroundColor: "#0d0a1a",
     show: false,
     webPreferences: {
@@ -131,7 +177,12 @@ async function createWindow() {
   win.once("ready-to-show", () => win?.show());
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      if (["http:", "https:"].includes(new URL(url).protocol))
+        void shell.openExternal(url);
+    } catch {
+      /* Geçersiz dış bağlantı açılmaz. */
+    }
     return { action: "deny" };
   });
 
@@ -139,13 +190,18 @@ async function createWindow() {
   win.webContents.on("render-process-gone", (_e, details) => {
     log.error("render-process-gone:", details);
     writeCrashLog("render-process-gone", details);
-    dialog.showErrorBox("HMX Agent", "Arayuz coktu. Uygulama yeniden baslatiliyor.");
+    dialog.showErrorBox(
+      "HMX Agent",
+      "Arayuz coktu. Uygulama yeniden baslatiliyor.",
+    );
     app.relaunch();
     app.quit();
   });
 
   // Ilk acilista kurulum sihirbazi
-  await win.loadURL(`http://127.0.0.1:${server.port}/${firstRun() ? "#/wizard" : ""}`);
+  await win.loadURL(
+    `http://127.0.0.1:${server.port}/${firstRun() ? "#/wizard" : ""}`,
+  );
 
   win.on("close", (e) => {
     if (!quitting) {
@@ -153,21 +209,47 @@ async function createWindow() {
       win?.hide(); // tray'e kucul
     }
   });
-  win.on("closed", () => { win = null; });
+  win.on("closed", () => {
+    win = null;
+  });
 
   // 6. Sistem tepsisi
-  tray = new Tray(nativeImage.createEmpty());
+  tray = new Tray(
+    fs.existsSync(iconPath)
+      ? nativeImage.createFromPath(iconPath)
+      : nativeImage.createEmpty(),
+  );
   tray.setToolTip("HMX Agent");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Paneli Ac", click: () => { win?.show(); win?.focus(); } },
-    { type: "separator" },
-    { label: "Cikis", click: () => { quitting = true; app.quit(); } },
-  ]));
-  tray.on("click", () => { win?.show(); win?.focus(); });
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Paneli Ac",
+        click: () => {
+          win?.show();
+          win?.focus();
+        },
+      },
+      { type: "separator" },
+      {
+        label: "Cikis",
+        click: () => {
+          quitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  tray.on("click", () => {
+    win?.show();
+    win?.focus();
+  });
 }
 
 app.whenReady().then(async () => {
-  log.info("startup begin", { version: app.getVersion(), platform: process.platform });
+  startupLogger.info("startup begin", {
+    version: app.getVersion(),
+    platform: process.platform,
+  });
   try {
     await createWindow();
   } catch (e) {
@@ -178,5 +260,10 @@ app.whenReady().then(async () => {
 });
 
 // 5. Kapanista child process'i temiz oldur
-app.on("before-quit", () => { quitting = true; server?.stop(); });
-app.on("window-all-closed", () => { /* tray'de yasamaya devam et */ });
+app.on("before-quit", () => {
+  quitting = true;
+  server?.stop();
+});
+app.on("window-all-closed", () => {
+  /* tray'de yasamaya devam et */
+});

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { paths, ensureDirs } from "@hmx/core";
+import { paths, ensureDirs, writeJson } from "@hmx/core";
 
 export type Asset = {
   id: string;
@@ -39,11 +39,13 @@ export class AssetCatalog {
 
   private write(db: Catalog) {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify(db, null, 2));
+    writeJson(this.file, db);
   }
 
   register(input: Omit<Asset, "id" | "createdAt" | "status">): Asset {
-    const stat = fs.existsSync(input.filePath) ? fs.statSync(input.filePath) : null;
+    const stat = fs.existsSync(input.filePath)
+      ? fs.statSync(input.filePath)
+      : null;
     const asset: Asset = {
       ...input,
       id: `ast_${Date.now()}_${crypto.randomBytes(2).toString("hex")}`,
@@ -57,17 +59,24 @@ export class AssetCatalog {
     return asset;
   }
 
-  query(filter: Partial<Pick<Asset, "type" | "provider" | "sessionId" | "status">> & { tag?: string } = {}): Asset[] {
+  query(
+    filter: Partial<
+      Pick<Asset, "type" | "provider" | "sessionId" | "status">
+    > & { tag?: string } = {},
+  ): Asset[] {
     return this.read().assets.filter((a) => {
       if (filter.tag && !a.tags.includes(filter.tag)) return false;
-      return Object.entries(filter).every(([k, v]) => k === "tag" || (a as any)[k] === v);
+      return Object.entries(filter).every(
+        ([k, v]) => k === "tag" || v === undefined || (a as any)[k] === v,
+      );
     });
   }
 
   /** Diskte kaybolan dosyalari missing olarak isaretle (dogrulama gecisi) */
   reverify(): { verified: number; missing: number } {
     const db = this.read();
-    let verified = 0, missing = 0;
+    let verified = 0,
+      missing = 0;
     for (const a of db.assets) {
       const ok = fs.existsSync(a.filePath) && fs.statSync(a.filePath).size > 0;
       a.status = ok ? "verified" : "missing";

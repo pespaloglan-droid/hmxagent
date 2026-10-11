@@ -1,60 +1,230 @@
-import React, { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSessionStore } from "../stores/sessionStore";
-
-/** Sol orta panel: session listesi + arama + yeni oturum + durum badge'leri */
-export function SessionPanel() {
-  const sessions = useSessionStore((s) => s.sessions);
-  const activeId = useSessionStore((s) => s.activeSessionId);
-  const { createSession, setActiveSession, removeSession, renameSession } = useSessionStore();
+import { Button, Icon } from "./ui";
+function relative(ts: number): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  return minutes < 1
+    ? "Şimdi"
+    : minutes < 60
+      ? `${minutes} dk önce`
+      : minutes < 1440
+        ? `${Math.floor(minutes / 60)} sa önce`
+        : `${Math.floor(minutes / 1440)} gün önce`;
+}
+function group(ts: number): string {
+  const now = new Date();
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return ts >= today
+    ? "Bugün"
+    : ts >= monday.getTime()
+      ? "Bu hafta"
+      : "Daha eski";
+}
+export function SessionPanel(): JSX.Element {
+  const store = useSessionStore();
   const [query, setQuery] = useState("");
-
-  const list = Object.values(sessions)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .filter((s) => s.title.toLowerCase().includes(query.toLowerCase()));
-
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const list = Object.values(store.sessions)
+    .filter((s) =>
+      `${s.title} ${s.messages.at(-1)?.content ?? ""}`
+        .toLocaleLowerCase("tr-TR")
+        .includes(query.toLocaleLowerCase("tr-TR")),
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const rename = () => {
+    if (editing && title.trim()) {
+      store.renameSession(editing, title.trim().slice(0, 120));
+      setEditing(null);
+    }
+  };
   return (
-    <aside className="session-panel">
-      <div style={{ padding: "12px 12px 8px" }}>
-        <input placeholder="Oturum ara…" value={query} onChange={(e) => setQuery(e.target.value)}
-          style={{ width: "100%" }} />
-      </div>
-      <div style={{ padding: "0 12px 10px" }}>
-        <button className="btn" style={{ width: "100%" }} onClick={() => createSession()}>+ Yeni Oturum</button>
-      </div>
+    <aside className="session-panel" aria-label="Çalışma oturumları">
+      <header>
+        <div className="session-line">
+          <h2>Oturumlar</h2>
+          <span className="badge dim">
+            {Object.keys(store.sessions).length}
+          </span>
+        </div>
+        <input
+          type="search"
+          aria-label="Oturumlarda ara"
+          placeholder="Başlık veya son mesaj…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <Button icon="plus" onClick={() => store.createSession()}>
+          Yeni oturum
+        </Button>
+      </header>
       <div className="session-list">
-        {list.map((s) => {
-          const lastMsg = s.messages.at(-1);
-          const hasError = s.messages.some((m) => m.error);
-          const streaming = s.messages.some((m) => m.streaming);
+        {list.map((session, index) => {
+          const previous = list[index - 1];
+          const status = session.messages.some((m) => m.streaming)
+            ? "warn"
+            : session.messages.some((m) => m.error)
+              ? "err"
+              : "ok";
           return (
-            <div key={s.id}
-              className={`session-item ${s.id === activeId ? "active" : ""}`}
-              onClick={() => setActiveSession(s.id)}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span className={`dot ${streaming ? "warn" : hasError ? "err" : "ok"}`} />
-                <b style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  onDoubleClick={() => {
-                    const t = prompt("Oturum adı:", s.title);
-                    if (t) renameSession(s.id, t);
-                  }}>{s.title}</b>
-                <button className="icon-btn" title="Sil" onClick={(e) => { e.stopPropagation(); removeSession(s.id); }}>×</button>
-              </div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 3, display: "flex", gap: 6 }}>
-                <span>{s.messages.length} mesaj</span>
-                {s.selectedModelId && <span>· {s.selectedModelId}</span>}
-                {s.selectedAgentId && <span>· {s.selectedAgentId}</span>}
-              </div>
-              {lastMsg && (
-                <div className="muted" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {lastMsg.content.slice(0, 60)}
-                </div>
+            <div key={session.id}>
+              {(!previous ||
+                group(previous.updatedAt) !== group(session.updatedAt)) && (
+                <h3 className="session-group-title">
+                  {group(session.updatedAt)}
+                </h3>
               )}
+              <div
+                className={`session-row ${session.id === store.activeSessionId ? "active" : ""}`}
+              >
+                {editing === session.id ? (
+                  <form
+                    className="session-rename"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      rename();
+                    }}
+                  >
+                    <input
+                      aria-label="Yeni oturum adı"
+                      autoFocus
+                      maxLength={120}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setEditing(null);
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={!title.trim()}
+                      type="submit"
+                    >
+                      Kaydet
+                    </Button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className="session-open"
+                    ref={(node) => {
+                      refs.current[session.id] = node;
+                    }}
+                    aria-current={
+                      store.activeSessionId === session.id ? "true" : undefined
+                    }
+                    onClick={() => store.setActiveSession(session.id)}
+                    onDoubleClick={() => {
+                      setEditing(session.id);
+                      setTitle(session.title);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                        e.preventDefault();
+                        const next =
+                          (index +
+                            (e.key === "ArrowDown" ? 1 : -1) +
+                            list.length) %
+                          list.length;
+                        refs.current[list[next].id]?.focus();
+                      }
+                      if (e.key === "F2") {
+                        e.preventDefault();
+                        setEditing(session.id);
+                        setTitle(session.title);
+                      }
+                    }}
+                  >
+                    <span className="session-line">
+                      <span
+                        className={`dot ${status}`}
+                        aria-label={
+                          status === "warn"
+                            ? "Çalışıyor"
+                            : status === "err"
+                              ? "Hata var"
+                              : "Hazır"
+                        }
+                      />
+                      <strong>{session.title}</strong>
+                    </span>
+                    <span className="session-preview">
+                      {session.messages.at(-1)?.content ||
+                        "İlk mesajınızı bekliyor"}
+                    </span>
+                    <span className="session-meta">
+                      <span>{relative(session.updatedAt)}</span>
+                      {session.selectedModelId && (
+                        <span>
+                          {session.selectedModelId.replace(/^llm:/, "")}
+                        </span>
+                      )}
+                      {session.selectedAgentId && (
+                        <span>{session.selectedAgentId}</span>
+                      )}
+                    </span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="session-delete"
+                  aria-label={`${session.title} oturumunu sil`}
+                  onClick={() => setDeleting(session.id)}
+                >
+                  <Icon name="trash" />
+                </button>
+                {deleting === session.id && (
+                  <div className="session-confirm">
+                    <span>Emin misiniz?</span>
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        store.removeSession(session.id);
+                        setDeleting(null);
+                      }}
+                    >
+                      Sil
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setDeleting(null)}
+                    >
+                      Vazgeç
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
-        {list.length === 0 && (
-          <div className="muted" style={{ padding: 16, fontSize: 12, textAlign: "center" }}>
-            {query ? "Eşleşen oturum yok." : "Henüz oturum yok. \"Yeni Oturum\" ile başla."}
+        {!list.length && (
+          <div className="empty-state">
+            <Icon name="layers" />
+            <h3>{query ? "Eşleşen oturum yok" : "Henüz oturum yok"}</h3>
+            <p>
+              {query
+                ? "Başka bir arama deneyin."
+                : "İlk göreviniz için yeni bir oturum açın."}
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => (query ? setQuery("") : store.createSession())}
+            >
+              {query ? "Aramayı temizle" : "Oturum oluştur"}
+            </Button>
           </div>
         )}
       </div>

@@ -10,18 +10,16 @@ import { TaskLedger } from "./ledger.js";
  * Root-cause fix'ler:
  *  - chat(): plan-onay akisina GIRMEDEN direkt (streaming) sohbet — basit mesajlar icin
  *  - setModel(): session bozulmadan model degisimi (history korunur)
- *  - agent profili: AgentRegistry'den promptAddon ile davranis varyanti
+ *  - gerçek driver seçimi AgentRegistry tarafından yürütülür.
  */
 export class HmxAgent {
   private ledger = new TaskLedger();
   private history: ChatMessage[] = [];
   private lastError: string | null = null;
   private errorStreak = 0;
-  private promptAddon: string;
 
-  constructor(private llm: LlmClient = LlmClient.fromEnv(), promptAddon = "") {
-    this.promptAddon = promptAddon;
-    this.history.push({ role: "system", content: HMX_SYSTEM_PROMPT + this.promptAddon });
+  constructor(private llm: LlmClient = LlmClient.fromEnv()) {
+    this.history.push({ role: "system", content: HMX_SYSTEM_PROMPT });
   }
 
   get sessionId() {
@@ -41,7 +39,10 @@ export class HmxAgent {
    * Direkt sohbet: plan/onay dongusune girmeden tek mesajlik yanit.
    * Streaming icin onToken ver; verilmezse tek parca doner.
    */
-  async chat(userContent: string, onToken?: (token: string) => void): Promise<string> {
+  async chat(
+    userContent: string,
+    onToken?: (token: string) => void,
+  ): Promise<string> {
     this.ledger.log("action", `chat: ${userContent.slice(0, 120)}`);
     const out = await this.safeChat(userContent, onToken);
     this.ledger.log("verify", out.slice(0, 500));
@@ -49,12 +50,15 @@ export class HmxAgent {
   }
 
   /** Yeni gorev: once goal + plan urettir, kullaniciya goster. */
-  async startTask(userRequest: string): Promise<{ goal: string; plan: string }> {
+  async startTask(
+    userRequest: string,
+  ): Promise<{ goal: string; plan: string }> {
     const goalPrompt = `Kullanici istegi: "${userRequest}"\n\nGorev dongusu ADIM 0 ve ADIM 2'yi uygula:\n<goal> ... </goal>\n<plan> ... </plan>\nSadece bu iki blogu yaz.`;
     this.ledger.log("goal", userRequest);
     const out = await this.safeChat(goalPrompt);
     this.ledger.log("plan", out);
-    const goal = out.match(/<goal>([\s\S]*?)<\/goal>/)?.[1]?.trim() ?? userRequest;
+    const goal =
+      out.match(/<goal>([\s\S]*?)<\/goal>/)?.[1]?.trim() ?? userRequest;
     const plan = out.match(/<plan>([\s\S]*?)<\/plan>/)?.[1]?.trim() ?? out;
     return { goal, plan };
   }
@@ -74,7 +78,10 @@ export class HmxAgent {
     return out;
   }
 
-  private async safeChat(userContent: string, onToken?: (token: string) => void): Promise<string> {
+  private async safeChat(
+    userContent: string,
+    onToken?: (token: string) => void,
+  ): Promise<string> {
     this.history.push({ role: "user", content: userContent });
     try {
       const reply = onToken
@@ -90,8 +97,13 @@ export class HmxAgent {
       if (this.lastError === msg) {
         this.errorStreak++;
         if (this.errorStreak >= 2) {
-          this.ledger.log("error", `Ayni hata 2+ kez: ${msg}. Duruldu, strateji degistirilmeli.`);
-          throw new Error(`HMX DURDU: Ayni hata tekrarlandi (${msg}). Kok nedeni cozmeden devam etmiyorum.`);
+          this.ledger.log(
+            "error",
+            `Ayni hata 2+ kez: ${msg}. Duruldu, strateji degistirilmeli.`,
+          );
+          throw new Error(
+            `HMX DURDU: Ayni hata tekrarlandi (${msg}). Kok nedeni cozmeden devam etmiyorum.`,
+          );
         }
       } else {
         this.errorStreak = 1;

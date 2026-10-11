@@ -1,9 +1,19 @@
-import type { MediaProvider, GenerateRequest, GenerateResult, ProviderKind, ProviderConfig } from "@hmx/providers";
+import type {
+  MediaProvider,
+  GenerateRequest,
+  GenerateResult,
+  ProviderKind,
+  ProviderConfig,
+} from "@hmx/providers";
 import { loadAllProviders, loadProviderConfigs } from "@hmx/providers";
 import { TaskLedger } from "@hmx/agent-core";
 import { CircuitBreaker } from "./circuit-breaker.js";
 
-const TIER_ORDER: Record<string, number> = { subscription: 0, cheap: 1, free: 2 };
+const TIER_ORDER: Record<string, number> = {
+  subscription: 0,
+  cheap: 1,
+  free: 2,
+};
 
 /**
  * Medya router'i (Bolum 5.3 + 6.2).
@@ -26,27 +36,38 @@ export class MediaRouter {
   /** Efektif fallback sirasi: env override > preferred > tier sirasi (Bolum 6.2) */
   orderFor(kind: ProviderKind, preferred?: string): string[] {
     const envKey = `HMX_ORDER_${kind.toUpperCase()}`;
-    const envOrder = process.env[envKey]?.split(",").map((s) => s.trim()).filter(Boolean);
+    const envOrder = process.env[envKey]
+      ?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     let base: string[];
     if (envOrder && envOrder.length > 0) {
       base = envOrder;
     } else {
       const cfgs = loadProviderConfigs().filter((c) => c.kind === kind);
-      base = cfgs
-        .sort((a, b) => tierRank(a) - tierRank(b))
-        .map((c) => c.id);
+      base = cfgs.sort((a, b) => tierRank(a) - tierRank(b)).map((c) => c.id);
     }
-    const order = preferred ? [preferred, ...base.filter((id) => id !== preferred)] : base;
+    const order = preferred
+      ? [preferred, ...base.filter((id) => id !== preferred)]
+      : base;
     return order.length > 0 ? order : base;
   }
 
-  list(): { id: string; kind: ProviderKind; authMode: string; tier: string; circuitOpen: boolean }[] {
+  list(): {
+    id: string;
+    kind: ProviderKind;
+    authMode: string;
+    tier: string;
+    circuitOpen: boolean;
+  }[] {
     const cfgs = loadProviderConfigs();
     return this.providers.map((p) => ({
       id: p.id,
       kind: p.kind,
       authMode: p.authMode,
-      tier: cfgs.find((c) => c.id === p.id)?.tier ?? defaultTier(cfgs.find((c) => c.id === p.id)),
+      tier:
+        cfgs.find((c) => c.id === p.id)?.tier ??
+        defaultTier(cfgs.find((c) => c.id === p.id)),
       circuitOpen: this.circuit.isOpen(p.id),
     }));
   }
@@ -64,24 +85,41 @@ export class MediaRouter {
     const errors: string[] = [];
 
     for (const id of order) {
-      if (this.circuit.isOpen(id)) { errors.push(`${id}: devre disi (tekrarlayan hata)`); continue; }
+      req.signal?.throwIfAborted();
+      if (this.circuit.isOpen(id)) {
+        errors.push(`${id}: devre disi (tekrarlayan hata)`);
+        continue;
+      }
       const p = this.providers.find((x) => x.id === id && x.kind === kind);
-      if (!p) { errors.push(`${id}: tanimli degil`); continue; }
-      if (!(await p.isAvailable())) { errors.push(`${id}: kullanilamiyor (oturum/anahtar yok)`); continue; }
+      if (!p) {
+        errors.push(`${id}: tanimli degil`);
+        continue;
+      }
+      if (!(await p.isAvailable())) {
+        errors.push(`${id}: kullanilamiyor (oturum/anahtar yok)`);
+        continue;
+      }
 
       this.ledger?.log("action", `Uretim deneniyor: ${id} (${kind})`);
       const result = await p.generate({ ...req, kind });
+      req.signal?.throwIfAborted();
       if (result.ok) this.circuit.recordSuccess(id);
       else this.circuit.recordFailure(id);
 
       if (result.ok) {
-        this.ledger?.log("verify", `Uretim basarili: ${result.filePath} (${result.meta?.bytes} bayt)`);
+        this.ledger?.log(
+          "verify",
+          `Uretim basarili: ${result.filePath} (${result.meta?.bytes} bayt)`,
+        );
         return { ...result, provider: id };
       }
       errors.push(`${id}: ${result.error}`);
       this.ledger?.log("error", `Uretim basarisiz: ${id} - ${result.error}`);
     }
-    return { ok: false, error: `${kind}: tum saglayicilar basarisiz — zincir: ${order.join(" -> ")}\n- ${errors.join("\n- ")}` };
+    return {
+      ok: false,
+      error: `${kind}: tum saglayicilar basarisiz — zincir: ${order.join(" -> ")}\n- ${errors.join("\n- ")}`,
+    };
   }
 }
 

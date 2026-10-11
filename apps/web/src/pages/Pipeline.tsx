@@ -1,63 +1,271 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-
-export function PipelinePage() {
-  const [assets, setAssets] = useState<any[]>([]);
+import { JobsPanel } from "../components/JobsPanel";
+import { useUiStore } from "../stores/uiStore";
+import {
+  assertOk,
+  kindLabel,
+  statusLabel,
+  useAction,
+  useResource,
+  type Asset,
+} from "../components/pageData";
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  Field,
+  Notice,
+  Page,
+  Skeleton,
+  Table,
+} from "../components/ui";
+export function PipelinePage(): JSX.Element {
+  const assets = useResource<Asset[]>("/api/assets");
   const [selected, setSelected] = useState<string[]>([]);
   const [voiceover, setVoiceover] = useState("");
-  const [result, setResult] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const load = () => api.get("/api/assets").then(setAssets).catch(() => {});
-  useEffect(load, []);
-
-  const toggle = (filePath: string) =>
-    setSelected((s) => s.includes(filePath) ? s.filter((x) => x !== filePath) : [...s, filePath]);
-
-  async function compose() {
-    setBusy(true); setResult("");
-    try {
-      const clips = selected.filter((p) => assets.find((a) => a.filePath === p)?.type === "video");
-      const r = await api.post("/api/compose", { clips, voiceover: voiceover || undefined });
-      setResult(`✅ ${r.out} (${r.durationSec} sn, ffprobe doğrulandı)`);
-    } catch (e: any) {
-      setResult(`❌ ${e.message}`);
-    }
-    setBusy(false);
-  }
-
+  const [result, setResult] = useState<{
+    out: string;
+    durationSec: number;
+  } | null>(null);
+  const action = useAction();
+  useEffect(() => {
+    if (assets.data)
+      setSelected((old) =>
+        old.filter((file) =>
+          assets.data?.some(
+            (a) =>
+              a.filePath === file &&
+              a.type === "video" &&
+              a.status === "verified",
+          ),
+        ),
+      );
+  }, [assets.data]);
+  const toggle = (file: string) => {
+    setResult(null);
+    setSelected((old) =>
+      old.includes(file) ? old.filter((x) => x !== file) : [...old, file],
+    );
+  };
+  const move = (index: number, offset: number) => {
+    setResult(null);
+    setSelected((old) => {
+      const next = [...old];
+      const target = index + offset;
+      if (target < 0 || target >= next.length) return old;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+  const compose = () =>
+    action.run("compose", async () => {
+      setResult(null);
+      const clips = selected.filter((file) =>
+        assets.data?.some(
+          (a) =>
+            a.filePath === file &&
+            a.type === "video" &&
+            a.status === "verified",
+        ),
+      );
+      if (!clips.length || clips.length !== selected.length)
+        throw new Error(
+          "Yalnızca doğrulanmış video klipleri birleştirilebilir. Kataloğu yenileyin.",
+        );
+      if (voiceover.trim() && !/\.(mp3|wav)$/i.test(voiceover.trim()))
+        throw new Error("Seslendirme için .mp3 veya .wav dosya yolu girin.");
+      const job = await api.post<{ id: string }>("/api/jobs", {
+        kind: "compose",
+        prompt: JSON.stringify({
+          clips,
+          ...(voiceover.trim() ? { voiceover: voiceover.trim() } : {}),
+        }),
+      });
+      action.setNotice(
+        `İş kuyruğa eklendi: ${job.id}. Durumu aşağıdan takip edin.`,
+      );
+    });
   return (
-    <div>
-      <h2 className="page-title">Pipeline</h2>
-      <div className="card">
-        <b>Varlık Kataloğu</b> <span className="muted">(birleştirilecek klipleri seç)</span>
-        <table>
-          <thead><tr><th></th><th>Tür</th><th>Sağlayıcı</th><th>Dosya</th><th>Durum</th></tr></thead>
-          <tbody>
-            {assets.map((a) => (
-              <tr key={a.id} style={{ cursor: "pointer" }} onClick={() => a.status === "verified" && toggle(a.filePath)}>
-                <td>{a.status === "verified" && <input type="checkbox" readOnly checked={selected.includes(a.filePath)} />}</td>
-                <td><span className="badge dim">{a.type}</span></td>
-                <td className="mono">{a.provider}</td>
-                <td className="mono muted" style={{ fontSize: 11 }}>{a.filePath}</td>
-                <td>{a.status === "verified" ? <span className="badge ok">✓ doğrulandı</span> : <span className="badge err">✗ eksik</span>}</td>
+    <Page
+      title="Medya akışı"
+      description="Doğrulanmış kliplerinizi seçin, sıralayın ve tek bir video olarak birleştirin."
+      actions={
+        <Button
+          icon="refresh"
+          variant="secondary"
+          busy={assets.loading}
+          disabled={!!action.busy}
+          onClick={() => void assets.reload()}
+        >
+          Kataloğu yenile
+        </Button>
+      }
+    >
+      {assets.loading && !assets.data ? (
+        <Skeleton rows={5} />
+      ) : assets.error ? (
+        <ErrorState message={assets.error} retry={() => void assets.reload()} />
+      ) : !assets.data?.length ? (
+        <Empty
+          title="Kataloğunuz üretim bekliyor"
+          description="Önce ajanla bir medya üretimi yapın. Doğrulanmış dosyalarınız burada listelenir."
+          action={
+            <Button
+              icon="plus"
+              onClick={() => useUiStore.getState().setPage("chat")}
+            >
+              Üretime başla
+            </Button>
+          }
+        />
+      ) : (
+        <Card
+          title="Varlık kataloğu"
+          description="Sadece doğrulanmış videolar seçilebilir; görsel ve ses kayıtları bilgi amaçlı gösterilir."
+          actions={<Badge>{assets.data.length} varlık</Badge>}
+        >
+          <Table label="Medya varlıkları">
+            <thead>
+              <tr>
+                <th scope="col">Seçim</th>
+                <th scope="col">Tür</th>
+                <th scope="col">Sağlayıcı</th>
+                <th scope="col">Dosya</th>
+                <th scope="col">Durum</th>
               </tr>
+            </thead>
+            <tbody>
+              {assets.data.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <label className="hmx-checkbox">
+                      <input
+                        type="checkbox"
+                        aria-label={`${a.filePath} klibini seç`}
+                        disabled={
+                          !!action.busy ||
+                          a.status !== "verified" ||
+                          a.type !== "video"
+                        }
+                        checked={selected.includes(a.filePath)}
+                        onChange={() => toggle(a.filePath)}
+                      />
+                    </label>
+                  </td>
+                  <td>
+                    <Badge>{kindLabel(a.type)}</Badge>
+                  </td>
+                  <td className="hmx-mono">{a.provider}</td>
+                  <td className="hmx-mono hmx-path-cell">{a.filePath}</td>
+                  <td>
+                    <Badge tone={a.status === "verified" ? "ok" : "warn"}>
+                      {statusLabel(a.status)}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+      <Card
+        title="Birleştirme planı"
+        description="Klipler aşağıdaki sırayla birleştirilir. Çıktı ffprobe ile doğrulanır."
+      >
+        {selected.length === 0 ? (
+          <p>Başlamak için katalogdan en az bir doğrulanmış video seçin.</p>
+        ) : (
+          <ol className="hmx-sequence">
+            {selected.map((file, index) => (
+              <li key={file}>
+                <Badge>{index + 1}</Badge>
+                <span className="hmx-mono">{file}</span>
+                <div className="hmx-actions">
+                  <Button
+                    variant="secondary"
+                    icon="up"
+                    aria-label={`${index + 1}. klibi yukarı taşı`}
+                    disabled={index === 0 || !!action.busy}
+                    onClick={() => move(index, -1)}
+                  >
+                    Yukarı
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon="down"
+                    aria-label={`${index + 1}. klibi aşağı taşı`}
+                    disabled={index === selected.length - 1 || !!action.busy}
+                    onClick={() => move(index, 1)}
+                  >
+                    Aşağı
+                  </Button>
+                </div>
+              </li>
             ))}
-            {assets.length === 0 && <tr><td colSpan={5} className="muted">Katalog boş. Önce üretim yapın.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div className="card">
-        <b>Birleştir (ffmpeg concat + amix)</b>
-        <p>
-          <input style={{ width: "100%" }} placeholder="Seslendirme dosyası (opsiyonel, mp3/wav yolu)"
-            value={voiceover} onChange={(e) => setVoiceover(e.target.value)} />
-        </p>
-        <button className="btn" onClick={compose} disabled={busy || selected.length === 0}>
-          {busy ? "Birleştiriliyor…" : `Birleştir (${selected.length} klip)`}
-        </button>
-        {result && <p style={{ marginTop: 10 }}>{result}</p>}
-      </div>
-    </div>
+          </ol>
+        )}
+        <form
+          className="hmx-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void compose();
+          }}
+        >
+          <Field
+            label="Seslendirme dosyası (isteğe bağlı)"
+            hint="Sunucuda bulunan bir .mp3 veya .wav dosyasının yolunu girin; bu alan dosya yüklemez."
+          >
+            <input
+              value={voiceover}
+              disabled={!!action.busy}
+              onChange={(e) => {
+                setVoiceover(e.target.value);
+                setResult(null);
+              }}
+              placeholder="/medya/seslendirme.wav"
+            />
+          </Field>
+          <div className="hmx-footer">
+            <span className="hmx-muted">{selected.length} klip seçildi</span>
+            <Button
+              type="submit"
+              icon="play"
+              busy={!!action.busy}
+              disabled={!selected.length || !!assets.error || assets.loading}
+            >
+              Videoyu birleştir
+            </Button>
+          </div>
+        </form>
+      </Card>
+      {action.error && (
+        <Notice tone="error">
+          {action.error}
+          <div className="hmx-actions">
+            <Button
+              variant="secondary"
+              busy={!!action.busy}
+              onClick={() => void compose()}
+            >
+              Yeniden dene
+            </Button>
+          </div>
+        </Notice>
+      )}
+      {action.notice && <Notice tone="ok">{action.notice}</Notice>}
+      <JobsPanel />
+      {result && (
+        <Notice tone="ok">
+          <strong>Video hazır ve doğrulandı.</strong>
+          <p className="hmx-mono">{result.out}</p>
+          <span>
+            {result.durationSec} saniye · ffprobe doğrulaması başarılı
+          </span>
+        </Notice>
+      )}
+    </Page>
   );
 }

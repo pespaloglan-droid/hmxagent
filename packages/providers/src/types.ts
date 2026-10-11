@@ -9,6 +9,7 @@ export type GenerateRequest = {
   aspectRatio?: "16:9" | "9:16" | "1:1";
   voiceId?: string;
   outputPath: string;
+  signal?: AbortSignal;
 };
 
 export type GenerateResult = {
@@ -69,7 +70,11 @@ export type ProviderConfig = {
   description?: string;
   requiresEnv?: string[];
   // Tarayici oturumu:
-  loginCheck?: { selector?: string; loggedInText?: string; failUrlContains?: string };
+  loginCheck?: {
+    selector?: string;
+    loggedInText?: string;
+    failUrlContains?: string;
+  };
   selectors?: Record<string, string>;
   timeouts?: { generateMs?: number };
   // Kota rotasyonu (Bolum 2): bu metinler sayfada/hatada gorunurse hesap cooldown'a alinir
@@ -77,7 +82,7 @@ export type ProviderConfig = {
   // Maliyet katmani (Bolum 6.2): fallback zinciri subscription -> cheap -> free sirasiyla kurulur
   tier?: "subscription" | "cheap" | "free";
   // api-key modu icin:
-  apiKeyEnv?: string;   // env degiskeni adi, ornegin "OPENAI_API_KEY"
+  apiKeyEnv?: string; // env degiskeni adi, ornegin "OPENAI_API_KEY"
   endpoint?: string;
   model?: string;
 };

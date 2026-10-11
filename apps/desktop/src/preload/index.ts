@@ -1,7 +1,12 @@
 // Guvenli IPC kopruleri (contextIsolation acik, nodeIntegration kapali)
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("hmxAPI", {
   platform: process.platform,
-  versions: { electron: process.versions.electron, chrome: process.versions.chrome },
+  openDataDir: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("hmx:open-data-dir"),
+  versions: {
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+  },
 });

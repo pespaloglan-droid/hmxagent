@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { paths, ensureDirs } from "@hmx/core";
+import { paths, ensureDirs, getLogger } from "@hmx/core";
 
 export type LedgerEvent = {
   ts: string;
@@ -25,7 +25,9 @@ export class TaskLedger {
 
   constructor(sessionId?: string) {
     ensureDirs();
-    this.sessionId = sessionId ?? `ses_${new Date().toISOString().slice(0, 10).replaceAll("-", "")}_${crypto.randomBytes(2).toString("hex")}`;
+    this.sessionId =
+      sessionId ??
+      `ses_${new Date().toISOString().slice(0, 10).replaceAll("-", "")}_${crypto.randomBytes(2).toString("hex")}`;
     this.file = path.join(paths.logs, `${this.sessionId}.jsonl`);
   }
 
@@ -38,7 +40,17 @@ export class TaskLedger {
       summary,
       detail,
     };
-    fs.appendFileSync(this.file, JSON.stringify(ev) + "\n");
+    getLogger("agent")
+      .child({ sessionId: this.sessionId, step: ev.step, event: type })
+      [type === "error" ? "error" : "info"](summary);
+    try {
+      fs.appendFileSync(this.file, JSON.stringify(ev) + "\n");
+    } catch (error) {
+      getLogger("agent").warn("Görev defteri yazılamadı", {
+        sessionId: this.sessionId,
+        error,
+      });
+    }
     if (type === "goal") this.goal = summary;
     return ev;
   }

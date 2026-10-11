@@ -33,3 +33,6 @@ export {
   connectChrome,
 } from "./chrome.js";
 export type { ChromeProfile } from "./chrome.js";
+
+export { ModelRegistry } from "./model-registry.js";
+export type { RegisteredModel } from "./model-registry.js";

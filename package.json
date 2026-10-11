@@ -6,11 +6,11 @@
   "type": "module",
   "workspaces": ["packages/*", "apps/*"],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.3"
   },
   "scripts": {
     "build": "tsc -b tsconfig.json && pnpm --filter @hmx/web build",
-    "test": "tsx tests/run.ts && tsx --test tests/registry.spec.ts",
+    "test": "tsx tests/run.ts && tsx --test tests/registry.spec.ts tests/professionalization.spec.ts",
     "dev": "tsx apps/cli/src/index.ts",
     "hmx": "tsx apps/cli/src/index.ts",
     "setup": "node scripts/setup.cjs",

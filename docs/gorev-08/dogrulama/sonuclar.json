@@ -1,0 +1,217 @@
+{
+  "results": [
+    {
+      "name": "Sessions: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Sessions: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Sessions: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Sessions: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Sessions: empty state",
+      "ok": true
+    },
+    {
+      "name": "Servers: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Servers: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Servers: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Servers: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Servers: empty state",
+      "ok": true
+    },
+    {
+      "name": "Providers: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Providers: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Providers: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Providers: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Providers: empty state",
+      "ok": true
+    },
+    {
+      "name": "Models: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Models: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Models: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Models: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Models: empty state",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: empty state",
+      "ok": true
+    },
+    {
+      "name": "Logs: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Logs: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Logs: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Logs: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Logs: empty state",
+      "ok": true
+    },
+    {
+      "name": "Settings: desktop render",
+      "ok": true
+    },
+    {
+      "name": "Settings: 390px responsive",
+      "ok": true
+    },
+    {
+      "name": "Settings: loading skeleton",
+      "ok": true
+    },
+    {
+      "name": "Settings: error and retry",
+      "ok": true
+    },
+    {
+      "name": "Settings: empty state",
+      "ok": true
+    },
+    {
+      "name": "Sessions: search, detail, empty event list",
+      "ok": true
+    },
+    {
+      "name": "Sessions: stale detail response ignored",
+      "ok": true
+    },
+    {
+      "name": "Servers: model test request, result",
+      "ok": true
+    },
+    {
+      "name": "Providers: premium cards and 5 tabs",
+      "ok": true
+    },
+    {
+      "name": "Providers: spinner, test failed result, retry",
+      "ok": true
+    },
+    {
+      "name": "Providers: JSON validation, save, focus trap",
+      "ok": true
+    },
+    {
+      "name": "Providers: delete failure inside dialog",
+      "ok": true
+    },
+    {
+      "name": "Providers: accounts, browser login start/finish",
+      "ok": true
+    },
+    {
+      "name": "Providers: API account clears credentials on mode switch",
+      "ok": true
+    },
+    {
+      "name": "Providers: Token yönlendirme",
+      "ok": true
+    },
+    {
+      "name": "Providers: Proxy'ler",
+      "ok": true
+    },
+    {
+      "name": "Providers: Etkinlik ve sağlık",
+      "ok": true
+    },
+    {
+      "name": "Models: validation, save preserves key, test key reuse",
+      "ok": true
+    },
+    {
+      "name": "Pipeline: eligibility, reordering and payload",
+      "ok": true
+    },
+    {
+      "name": "Settings: validation, whitelist payload, toast and wizard",
+      "ok": true
+    },
+    {
+      "name": "Logs: search, color, polling and pause",
+      "ok": true
+    },
+    {
+      "name": "Logs: retains tail on network error",
+      "ok": true
+    },
+    {
+      "name": "No uncaught browser exceptions",
+      "ok": true
+    }
+  ],
+  "issues": []
+}
