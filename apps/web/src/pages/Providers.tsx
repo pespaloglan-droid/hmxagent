@@ -1,297 +1,899 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
-
-const TABS = ["Providers", "Accounts", "Token Routing", "Proxies", "Activity & Health"] as const;
-
-export function ProvidersPage() {
-  const [tab, setTab] = useState<string>("Providers");
+import { useUiStore } from "../stores/uiStore";
+import {
+  KINDS,
+  assertOk,
+  kindLabel,
+  segment,
+  statusLabel,
+  tierLabel,
+  useAction,
+  useResource,
+  validHttpUrl,
+  type Account,
+  type ChromeProfile,
+  type Health,
+  type Provider,
+  type Routing,
+} from "../components/pageData";
+import {
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  Empty,
+  ErrorState,
+  Field,
+  Icon,
+  Notice,
+  Page,
+  Skeleton,
+  Table,
+  Toast,
+} from "../components/ui";
+// Sekme kimlikleri korunur, kullanıcıya görünen etiketler Türkçedir.
+const TABS = [
+  ["Providers", "Sağlayıcılar"],
+  ["Accounts", "Hesaplar"],
+  ["Token Routing", "Token yönlendirme"],
+  ["Proxies", "Proxy'ler"],
+  ["Activity & Health", "Etkinlik ve sağlık"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+export function ProvidersPage(): JSX.Element {
+  const [tab, setTab] = useState<Tab>("Providers");
+  const [locked, setLocked] = useState(false);
+  const id = useId();
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const tablist = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reveal = () => {
+      const strip = tablist.current;
+      const button = buttons.current[TABS.findIndex(([key]) => key === tab)];
+      if (!strip || !button) return;
+      const left = button.offsetLeft - strip.offsetLeft;
+      if (left < strip.scrollLeft) strip.scrollLeft = left;
+      else if (left + button.offsetWidth > strip.scrollLeft + strip.clientWidth)
+        strip.scrollLeft = left + button.offsetWidth - strip.clientWidth;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    if (tablist.current) observer.observe(tablist.current);
+    return () => observer.disconnect();
+  }, [tab]);
   return (
-    <div>
-      <h2 className="page-title">Providers & Accounts</h2>
-      <div className="tabs">
-        {TABS.map((t) => (
-          <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>
+    <Page
+      title="Sağlayıcılar ve hesaplar"
+      description="Bağlantılarınızı yönetin, hesap havuzunu izleyin ve üretim rotalarını kontrol edin."
+    >
+      <div ref={tablist} className="hmx-tabs" role="tablist" aria-label="Sağlayıcı yönetimi">
+        {TABS.map(([key, label], index) => (
+          <button
+            key={key}
+            ref={(node) => {
+              buttons.current[index] = node;
+            }}
+            id={`${id}-tab-${index}`}
+            aria-controls={`${id}-panel`}
+            role="tab"
+            aria-selected={tab === key}
+            disabled={locked && tab !== key}
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => setTab(key)}
+            onKeyDown={(event) => {
+              if (locked) return;
+              let next: number | null = null;
+              if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
+              if (event.key === "ArrowLeft") next = (index + TABS.length - 1) % TABS.length;
+              if (event.key === "Home") next = 0;
+              if (event.key === "End") next = TABS.length - 1;
+              if (next !== null) {
+                event.preventDefault();
+                setTab(TABS[next][0]);
+                buttons.current[next]?.focus();
+              }
+            }}
+          >
+            {label}
+          </button>
         ))}
       </div>
-      {tab === "Providers" && <ProvidersTab />}
-      {tab === "Accounts" && <AccountsTab />}
-      {tab === "Token Routing" && <RoutingTab />}
-      {tab === "Proxies" && (
-        <div className="card"><b>Proxy Yönetimi</b> <span className="badge warn">yakında</span>
-          <p className="muted">Proxy havuzu ve coğrafi rotasyon bu sekmede olacak.</p></div>
-      )}
-      {tab === "Activity & Health" && <HealthTab />}
-    </div>
+      <div
+        id={`${id}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${id}-tab-${TABS.findIndex(([key]) => key === tab)}`}
+        className="hmx-form"
+      >
+        {tab === "Providers" && <ProvidersTab onLock={setLocked} />}
+        {tab === "Accounts" && <AccountsTab onLock={setLocked} />}
+        {tab === "Token Routing" && <RoutingTab />}
+        {tab === "Proxies" && (
+          <Empty
+            icon="link"
+            title="Proxy yönetimi hazırlık aşamasında"
+            description="Mevcut API proxy havuzu veya coğrafi rotasyon sağlamıyor. Bu sekmede henüz ekleme ya da düzenleme yapılamaz."
+            action={
+              <Button variant="secondary" onClick={() => setTab("Providers")}>
+                Sağlayıcılara dön
+              </Button>
+            }
+          />
+        )}
+        {tab === "Activity & Health" && <HealthTab />}
+      </div>
+    </Page>
   );
 }
-
-function ProvidersTab() {
-  const [providers, setProviders] = useState<any[]>([]);
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
+function DeleteDialog({
+  label,
+  busy,
+  error,
+  onClose,
+  onDelete,
+}: {
+  label: string;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onDelete: () => void;
+}): JSX.Element {
+  return (
+    <Dialog title="Kaydı sil" busy={busy} onClose={onClose}>
+      <p>
+        <strong>{label}</strong> kaydını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+      </p>
+      {error && <Notice tone="error">{error}</Notice>}
+      <div className="hmx-actions">
+        <Button variant="danger" icon="trash" busy={busy} onClick={onDelete}>
+          Evet, sil
+        </Button>
+        <Button variant="secondary" disabled={busy} onClick={onClose}>
+          Vazgeç
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+function ProvidersTab({ onLock }: { onLock: (locked: boolean) => void }): JSX.Element {
+  const providers = useResource<Provider[]>("/api/providers");
+  const accounts = useResource<Account[]>("/api/accounts");
+  const action = useAction();
+  const [adding, setAdding] = useState(false);
   const [json, setJson] = useState("");
-  const [err, setErr] = useState("");
-  const [testing, setTesting] = useState<string | null>(null);
-
-  const load = () => {
-    api.get("/api/providers").then(setProviders).catch(() => {});
-    api.get("/api/accounts").then(setAccounts).catch(() => {});
+  const [validation, setValidation] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    onLock(!!action.busy || adding || !!deleting);
+    return () => onLock(false);
+  }, [action.busy, adding, deleting, onLock]);
+  const reload = async () => {
+    await Promise.all([providers.reload(), accounts.reload()]);
   };
-  useEffect(load, []);
-
-  async function addProvider() {
-    setErr("");
+  const add = () => {
+    setValidation("");
+    let cfg: unknown;
     try {
-      const cfg = JSON.parse(json);
-      await api.post("/api/providers", cfg);
-      setShowAdd(false); setJson(""); load();
-    } catch (e: any) {
-      setErr(e.message);
+      cfg = JSON.parse(json);
+    } catch {
+      setValidation("Geçerli bir JSON nesnesi girin.");
+      return;
     }
-  }
-
-  async function test(id: string) {
-    setTesting(id);
-    try {
-      const r = await api.post(`/api/providers/${id}/test`, {});
-      alert(r.ok ? "✅ Bağlantı OK" : "❌ Oturum/anahtar yok");
-    } catch (e: any) { alert("Hata: " + e.message); }
-    setTesting(null);
-  }
-
-  return (
-    <>
-      <div className="grid cols-3">
-        {providers.map((p) => (
-          <div key={p.id} className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <b>{p.id}</b>
-              {p.circuitOpen ? <span className="badge err">devre dışı</span> : <span className="badge ok">aktif</span>}
-            </div>
-            <p>
-              <span className="badge dim">{p.kind}</span>{" "}
-              <span className="badge dim">{p.tier}</span>{" "}
-              <span className="badge dim">{p.authMode}</span>
-            </p>
-            <p className="muted">{accounts.filter((a) => a.provider === p.id).length} hesap</p>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn sm ghost" disabled={testing === p.id} onClick={() => test(p.id)}>
-                {testing === p.id ? "…" : "Test"}
-              </button>
-              <button className="btn sm danger" onClick={() => api.del(`/api/providers/${p.id}`).then(load)}>Sil</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <button className="btn" onClick={() => setShowAdd(true)}>+ Sağlayıcı Ekle</button>
-      {showAdd && (
-        <div className="modal-bg" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Sağlayıcı Ekle (JSON config)</h3>
-            <p className="muted" style={{ fontSize: 12 }}>
-              Şema: id, kind (image/video/audio/llm), authMode, baseUrl, selectors, quotaIndicators, tier…
-            </p>
-            <textarea style={{ width: "100%", minHeight: 180 }} className="mono" value={json}
-              onChange={(e) => setJson(e.target.value)}
-              placeholder={'{\n  "id": "runway-web",\n  "kind": "video",\n  "authMode": "browser-session",\n  "baseUrl": "https://..."\n}'} />
-            {err && <p style={{ color: "var(--err)" }}>{err}</p>}
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button className="btn" onClick={addProvider}>Kaydet</button>
-              <button className="btn ghost" onClick={() => setShowAdd(false)}>Vazgeç</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function AccountsTab() {
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [form, setForm] = useState({ providerId: "", label: "", profileDir: "", apiKey: "" });
-  const [pendingLogin, setPendingLogin] = useState<string | null>(null);
-  const [msg, setMsg] = useState("");
-
-  const load = () => api.get("/api/accounts").then(setAccounts).catch(() => {});
-  useEffect(() => {
-    load();
-    api.get("/api/providers").then(setProviders).catch(() => {});
-  }, []);
-
-  const openAdd = () => {
-    setShowAdd(true); setMsg("");
-    api.get("/api/chrome-profiles").then(setProfiles).catch(() => setProfiles([]));
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) {
+      setValidation("Yapılandırma bir JSON nesnesi olmalı.");
+      return;
+    }
+    const object = cfg as Record<string, unknown>;
+    if (typeof object.id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(object.id)) {
+      setValidation("Kimlik yalnızca harf, rakam, alt çizgi ve tire içerebilir.");
+      return;
+    }
+    if (providers.data?.some((p) => p.id === object.id)) {
+      setValidation("Bu kimlik zaten var. Farklı bir kimlik kullanın.");
+      return;
+    }
+    if (
+      !KINDS.includes(object.kind as Provider["kind"]) ||
+      !["api-key", "browser-session"].includes(String(object.authMode))
+    ) {
+      setValidation("kind: image/video/audio/llm; authMode: api-key/browser-session olmalı.");
+      return;
+    }
+    if (typeof object.baseUrl !== "string" || !validHttpUrl(object.baseUrl)) {
+      setValidation("baseUrl geçerli bir HTTP(S) adresi olmalı.");
+      return;
+    }
+    void action.run("add", async () => {
+      assertOk(await api.post<{ ok: boolean; error?: string }>("/api/providers", object));
+      setAdding(false);
+      setJson("");
+      action.setNotice("Sağlayıcı eklendi.");
+      await reload();
+    });
   };
-
-  async function save() {
-    setMsg("");
-    try {
-      if (form.apiKey) {
-        await api.post("/api/accounts", { providerId: form.providerId, label: form.label, apiKey: form.apiKey });
-      } else if (form.profileDir) {
-        // Tarayici oturumu: Chrome acilir, kullanici girer, sonra "Kaydet" ile havuza yazilir
-        const r = await api.post("/api/accounts/login/start", { providerId: form.providerId, label: form.label, profileDir: form.profileDir });
-        setPendingLogin(r.pendingId);
-        setMsg(r.message);
-        return;
-      } else {
-        setMsg("API anahtarı veya Chrome profili seçmelisin."); return;
-      }
-      setShowAdd(false); setForm({ providerId: "", label: "", profileDir: "", apiKey: "" }); load();
-    } catch (e: any) { setMsg(e.message); }
-  }
-
-  async function finishLogin() {
-    if (!pendingLogin) return;
-    try {
-      await api.post("/api/accounts/login/finish", { pendingId: pendingLogin });
-      setPendingLogin(null); setShowAdd(false);
-      setForm({ providerId: "", label: "", profileDir: "", apiKey: "" });
-      load();
-    } catch (e: any) { setMsg(e.message); }
-  }
-
+  const test = (id: string) =>
+    action.run(`test:${id}`, async () => {
+      const result = await api.post<{ ok: boolean; error?: string }>(
+        `/api/providers/${segment(id)}/test`,
+        {},
+      );
+      setResults((old) => ({ ...old, [id]: result.ok }));
+      if (!result.ok) throw new Error(result.error ?? `${id}: oturum veya anahtar kullanılamıyor.`);
+      action.setNotice(`${id}: bağlantı testi başarılı.`);
+    });
+  const remove = () => {
+    if (!deleting) return;
+    const target = deleting;
+    void action.run("delete", async () => {
+      assertOk(await api.del<{ ok: boolean; error?: string }>(`/api/providers/${segment(target)}`));
+      setDeleting(null);
+      action.setNotice("Sağlayıcı silindi.");
+      await reload();
+    });
+  };
+  const error = providers.error || accounts.error;
   return (
     <>
-      <div className="card">
-        <table>
-          <thead><tr><th>Etiket</th><th>Sağlayıcı</th><th>Profil/Key</th><th>Durum</th><th>Cooldown</th><th>Hata</th><th></th></tr></thead>
-          <tbody>
-            {accounts.map((a) => (
-              <tr key={a.id}>
-                <td>{a.label}</td>
-                <td className="mono">{a.provider}</td>
-                <td className="muted">{a.profile ?? (a.hasApiKey ? "API key" : "—")}</td>
-                <td>
-                  {a.status === "active" && <span className="badge ok">Aktif</span>}
-                  {a.status === "cooldown" && <span className="badge warn">Cooldown</span>}
-                  {a.status === "error" && <span className="badge err">Hata</span>}
-                </td>
-                <td className="muted">{a.cooldownRemainingMs > 0 ? `${(a.cooldownRemainingMs / 3_600_000).toFixed(1)} sa` : "—"}</td>
-                <td>{a.failCount > 0 ? a.failCount : "—"}</td>
-                <td><button className="btn sm danger" onClick={() => api.del(`/api/accounts/${a.provider}/${a.id}`).then(load)}>Sil</button></td>
-              </tr>
-            ))}
-            {accounts.length === 0 && <tr><td colSpan={7} className="muted">Hesap yok.</td></tr>}
-          </tbody>
-        </table>
+      <div className="hmx-footer">
+        <span className="hmx-muted">
+          {providers.data?.length ?? 0} sağlayıcı · {accounts.data?.length ?? 0} hesap
+        </span>
+        <div className="hmx-actions">
+          <Button
+            variant="secondary"
+            icon="refresh"
+            disabled={!!action.busy}
+            busy={providers.loading || accounts.loading}
+            onClick={() => void reload()}
+          >
+            Yenile
+          </Button>
+          <Button
+            icon="plus"
+            disabled={!!action.busy}
+            onClick={() => {
+              action.clearError();
+              setValidation("");
+              setAdding(true);
+            }}
+          >
+            Sağlayıcı ekle
+          </Button>
+        </div>
       </div>
-      <button className="btn" onClick={openAdd}>+ Hesap Ekle</button>
-      {showAdd && (
-        <div className="modal-bg" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Hesap Ekle</h3>
-            <p>
-              <select value={form.providerId} onChange={(e) => setForm({ ...form, providerId: e.target.value })}>
-                <option value="">Sağlayıcı seç…</option>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.id} ({p.authMode})</option>)}
-              </select>{" "}
-              <input placeholder="Etiket (örn. Kişisel Gmail)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-            </p>
-            {providers.find((p) => p.id === form.providerId)?.authMode === "api-key" ? (
-              <p><input style={{ width: "100%" }} type="password" placeholder="API anahtarı" value={form.apiKey}
-                onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></p>
-            ) : form.providerId ? (
-              <div>
-                <p className="muted" style={{ fontSize: 12 }}>Chrome profili seç:</p>
-                {profiles.map((p) => (
-                  <p key={p.dir}>
-                    <label>
-                      <input type="radio" name="prof" checked={form.profileDir === p.dir}
-                        onChange={() => setForm({ ...form, profileDir: p.dir })} />{" "}
-                      {p.name}{p.email ? ` (${p.email})` : ""} <span className="muted mono">{p.dir}</span>
-                    </label>
-                  </p>
-                ))}
-                {profiles.length === 0 && <p className="muted">Chrome profili bulunamadı.</p>}
+      {action.error && !adding && (
+        <Notice tone="error">
+          {action.error}
+          <p>Testi veya silme işlemini yeniden deneyebilirsiniz.</p>
+        </Notice>
+      )}
+      {(providers.loading && !providers.data) || (accounts.loading && !accounts.data) ? (
+        <Skeleton rows={4} />
+      ) : error ? (
+        <ErrorState message={error} retry={() => void reload()} />
+      ) : !providers.data?.length ? (
+        <Empty
+          icon="link"
+          title="Sağlayıcı ağınızı kurun"
+          description="İlk sağlayıcınızı JSON yapılandırmasıyla ekleyin. Hesaplar ve yedek rotalar bu kayıtlar üzerinden çalışır."
+          action={
+            <Button icon="plus" onClick={() => setAdding(true)}>
+              İlk sağlayıcıyı ekle
+            </Button>
+          }
+        />
+      ) : (
+        <div className="hmx-grid">
+          {providers.data.map((p) => (
+            <Card className="hmx-provider" key={p.id}>
+              <div className="hmx-icon-tile">
+                <Icon name={p.authMode === "api-key" ? "server" : "link"} />
               </div>
-            ) : null}
-            {msg && <p style={{ color: "var(--warn)" }}>{msg}</p>}
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              {pendingLogin
-                ? <button className="btn" onClick={finishLogin}>Giriş yaptım — Kaydet</button>
-                : <button className="btn" onClick={save}>{form.apiKey ? "Kaydet" : "Chrome'u Aç ve Giriş Yap"}</button>}
-              <button className="btn ghost" onClick={() => { setShowAdd(false); setPendingLogin(null); }}>Vazgeç</button>
-            </div>
-          </div>
+              <div className="hmx-provider-top">
+                <h2>{p.id}</h2>
+                <Badge tone={p.circuitOpen ? "error" : "neutral"}>
+                  {p.circuitOpen ? "Devre açık" : "Devre kapalı"}
+                </Badge>
+              </div>
+              <div className="hmx-tags">
+                <Badge>{kindLabel(p.kind)}</Badge>
+                <Badge>{tierLabel(p.tier)}</Badge>
+                <Badge>{p.authMode === "api-key" ? "API anahtarı" : "Tarayıcı oturumu"}</Badge>
+              </div>
+              <p>{accounts.data?.filter((a) => a.provider === p.id).length ?? 0} bağlı hesap</p>
+              {results[p.id] !== undefined && (
+                <p>
+                  <Badge tone={results[p.id] ? "ok" : "error"}>
+                    {results[p.id] ? "Test başarılı" : "Test başarısız"}
+                  </Badge>
+                </p>
+              )}
+              <div className="hmx-actions">
+                <Button
+                  variant="secondary"
+                  icon="play"
+                  busy={action.busy === `test:${p.id}`}
+                  disabled={!!action.busy}
+                  onClick={() => void test(p.id)}
+                >
+                  Test et
+                </Button>
+                <Button
+                  variant="danger"
+                  icon="trash"
+                  disabled={!!action.busy}
+                  aria-label={`${p.id} sağlayıcısını sil`}
+                  onClick={() => {
+                    action.clearError();
+                    setDeleting(p.id);
+                  }}
+                >
+                  Sil
+                </Button>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
+      {adding && (
+        <Dialog title="Sağlayıcı ekle" busy={!!action.busy} onClose={() => setAdding(false)}>
+          <form
+            className="hmx-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add();
+            }}
+          >
+            <Field
+              label="JSON yapılandırması"
+              hint="Zorunlu alanlar: id, kind, authMode, baseUrl. Mevcut selector, kota ve tier alanlarını da ekleyebilirsiniz."
+              error={validation}
+            >
+              <textarea
+                className="hmx-mono"
+                value={json}
+                onChange={(e) => {
+                  setJson(e.target.value);
+                  setValidation("");
+                }}
+                disabled={!!action.busy}
+                placeholder={
+                  '{\n  "id": "ornek-video",\n  "kind": "video",\n  "authMode": "browser-session",\n  "baseUrl": "https://example.com",\n  "tier": "free"\n}'
+                }
+              />
+            </Field>
+            {action.error && <Notice tone="error">{action.error}</Notice>}
+            <Button type="submit" icon="check" busy={!!action.busy}>
+              Sağlayıcıyı kaydet
+            </Button>
+          </form>
+        </Dialog>
+      )}
+      {deleting && (
+        <DeleteDialog
+          error={action.error}
+          label={deleting}
+          busy={!!action.busy}
+          onClose={() => setDeleting(null)}
+          onDelete={remove}
+        />
+      )}
+      <Toast message={action.notice} onClose={() => action.setNotice("")} />
     </>
   );
 }
-
-function RoutingTab() {
-  const [routing, setRouting] = useState<any>(null);
-  useEffect(() => { api.get("/api/routing").then(setRouting).catch(() => {}); }, []);
-  if (!routing) return <div className="card muted">Yükleniyor…</div>;
-  const ts = routing.tokenSaver;
-  return (
-    <>
-      <div className="card">
-        <b>Tier zincirleri</b> <span className="muted">(subscription → cheap → free)</span>
-        {Object.entries(routing.order).map(([kind, order]: any) => (
-          <p key={kind}>
-            <span className="badge dim">{kind}</span>{" "}
-            {(order as string[]).map((id, i) => (
-              <span key={id}>
-                <span className="badge">{id}</span>{i < order.length - 1 && <span className="muted"> → </span>}
-              </span>
-            ))}
-            {order.length === 0 && <span className="muted">(sağlayıcı yok)</span>}
-          </p>
-        ))}
-        <p className="muted" style={{ fontSize: 12 }}>{routing.policy}</p>
-      </div>
-      <div className="card">
-        <b>Token Saver</b>
-        <p>Bu oturum: <span className="badge ok">%{Math.round((ts?.savedRatio ?? 0) * 100)} tasarruf</span></p>
-        <p className="muted">{ts?.compressedCount ?? 0} çıktı sıkıştırıldı · {ts?.beforeTokens ?? 0} → {ts?.afterTokens ?? 0} token</p>
-      </div>
-    </>
-  );
-}
-
-function HealthTab() {
-  const [health, setHealth] = useState<any>(null);
-  const [routing, setRouting] = useState<any>(null);
+const blankAccount = { providerId: "", label: "", profileDir: "", apiKey: "" };
+function AccountsTab({ onLock }: { onLock: (locked: boolean) => void }): JSX.Element {
+  const accounts = useResource<Account[]>("/api/accounts");
+  const providers = useResource<Provider[]>("/api/providers");
+  const [adding, setAdding] = useState(false);
+  const profiles = useResource<ChromeProfile[]>(adding ? "/api/chrome-profiles" : null);
+  const [form, setForm] = useState(blankAccount);
+  const [pending, setPending] = useState<string | null>(null);
+  const [validation, setValidation] = useState("");
+  const [deleting, setDeleting] = useState<Account | null>(null);
+  const action = useAction();
+  const selected = providers.data?.find((p) => p.id === form.providerId);
   useEffect(() => {
-    api.get("/api/health").then(setHealth).catch(() => {});
-    api.get("/api/routing").then(setRouting).catch(() => {});
-  }, []);
-  const bad = (routing?.accounts ?? []).filter((a: any) => a.status !== "active");
+    onLock(!!action.busy || !!pending || adding || !!deleting);
+    return () => onLock(false);
+  }, [action.busy, pending, adding, deleting, onLock]);
+  const reload = async () => {
+    await Promise.all([accounts.reload(), providers.reload()]);
+  };
+  const reset = () => {
+    setPending(null);
+    setAdding(false);
+    setForm(blankAccount);
+  };
+  const save = () => {
+    setValidation("");
+    if (!selected) {
+      setValidation("Bir sağlayıcı seçin.");
+      return;
+    }
+    if (!form.label.trim()) {
+      setValidation("Hesap için bir etiket girin.");
+      return;
+    }
+    if (selected.authMode === "api-key" ? !form.apiKey.trim() : !form.profileDir) {
+      setValidation(
+        selected.authMode === "api-key" ? "API anahtarını girin." : "Bir Chrome profili seçin.",
+      );
+      return;
+    }
+    void action.run("save", async () => {
+      if (selected.authMode === "api-key") {
+        assertOk(
+          await api.post<{ ok: boolean; error?: string }>("/api/accounts", {
+            providerId: form.providerId,
+            label: form.label.trim(),
+            apiKey: form.apiKey.trim(),
+          }),
+        );
+        reset();
+        action.setNotice("Hesap eklendi.");
+        await accounts.reload();
+      } else {
+        const result = assertOk(
+          await api.post<{ ok: boolean; pendingId: string; error?: string }>(
+            "/api/accounts/login/start",
+            { providerId: form.providerId, label: form.label.trim(), profileDir: form.profileDir },
+          ),
+        );
+        setPending(result.pendingId);
+      }
+    });
+  };
+  const finish = () => {
+    if (!pending) return;
+    void action.run("finish", async () => {
+      assertOk(
+        await api.post<{ ok: boolean; error?: string }>("/api/accounts/login/finish", {
+          pendingId: pending,
+        }),
+      );
+      reset();
+      action.setNotice("Tarayıcı hesabı kaydedildi.");
+      await accounts.reload();
+    });
+  };
+  const remove = () => {
+    if (!deleting) return;
+    const target = deleting;
+    void action.run("delete", async () => {
+      assertOk(
+        await api.del<{ ok: boolean; error?: string }>(
+          `/api/accounts/${segment(target.provider)}/${segment(target.id)}`,
+        ),
+      );
+      setDeleting(null);
+      action.setNotice("Hesap silindi.");
+      await accounts.reload();
+    });
+  };
+  const error = accounts.error || providers.error;
   return (
     <>
-      <div className="grid cols-3">
-        <div className="card"><b>Sistem</b>
-          <p>LLM: {health ? <span className="badge ok">bağlı</span> : <span className="badge err">yok</span>}</p>
-          <p>ffmpeg: {health?.ffmpeg ? <span className="badge ok">hazır</span> : <span className="badge err">yok</span>}</p>
-        </div>
-        <div className="card"><b>Hesaplar</b>
-          <p>{health?.quota?.accounts ?? 0} toplam · <span style={{ color: "var(--warn)" }}>{health?.quota?.cooldown ?? 0} cooldown</span> · <span style={{ color: "var(--err)" }}>{health?.quota?.error ?? 0} hata</span></p>
-        </div>
-        <div className="card"><b>Devre kesici</b>
-          {(routing?.circuits ?? []).filter((c: any) => c.open).length === 0
-            ? <p className="muted">Açık devre yok.</p>
-            : routing.circuits.filter((c: any) => c.open).map((c: any) => <p key={c.id}><span className="badge err">{c.id}</span></p>)}
+      <div className="hmx-footer">
+        <span className="hmx-muted">Hesap havuzu · kota ve oturum durumu</span>
+        <div className="hmx-actions">
+          <Button
+            variant="secondary"
+            icon="refresh"
+            busy={accounts.loading || providers.loading}
+            disabled={!!action.busy}
+            onClick={() => void reload()}
+          >
+            Yenile
+          </Button>
+          <Button
+            icon="plus"
+            disabled={!!action.busy}
+            onClick={() => {
+              setValidation("");
+              action.clearError();
+              setAdding(true);
+            }}
+          >
+            Hesap ekle
+          </Button>
         </div>
       </div>
-      {bad.length > 0 && (
-        <div className="card">
-          <b>Dikkat gerektiren hesaplar</b>
-          <table>
-            <thead><tr><th>Hesap</th><th>Sağlayıcı</th><th>Durum</th><th>Not</th></tr></thead>
+      {action.error && !adding && (
+        <Notice tone="error">
+          {action.error}
+          <p>Silme işlemini yeniden deneyebilirsiniz.</p>
+        </Notice>
+      )}
+      {(accounts.loading && !accounts.data) || (providers.loading && !providers.data) ? (
+        <Skeleton rows={5} />
+      ) : error ? (
+        <ErrorState message={error} retry={() => void reload()} />
+      ) : !accounts.data?.length ? (
+        <Empty
+          title="Hesap havuzunuz boş"
+          description="Tarayıcı profili veya API anahtarı ekleyerek sağlayıcılarınıza erişim tanımlayın."
+          action={
+            <Button icon="plus" onClick={() => setAdding(true)}>
+              İlk hesabı ekle
+            </Button>
+          }
+        />
+      ) : (
+        <Card title="Hesap havuzu" actions={<Badge>{accounts.data.length} hesap</Badge>}>
+          <Table label="Sağlayıcı hesapları">
+            <thead>
+              <tr>
+                <th scope="col">Hesap</th>
+                <th scope="col">Sağlayıcı</th>
+                <th scope="col">Kimlik türü</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Bekleme</th>
+                <th scope="col">Hata</th>
+                <th scope="col">İşlem</th>
+              </tr>
+            </thead>
             <tbody>
-              {bad.map((a: any) => (
-                <tr key={a.id}><td>{a.label}</td><td className="mono">{a.provider}</td>
-                  <td><span className={`badge ${a.status === "cooldown" ? "warn" : "err"}`}>{a.status}</span></td>
-                  <td className="muted">{a.notes ?? "—"}</td></tr>
+              {accounts.data.map((a) => (
+                <tr key={`${a.provider}:${a.id}`}>
+                  <td>
+                    <strong>{a.label}</strong>
+                  </td>
+                  <td className="hmx-mono">{a.provider}</td>
+                  <td>{a.profile ?? (a.hasApiKey ? "API anahtarı" : "—")}</td>
+                  <td>
+                    <Badge
+                      tone={
+                        a.status === "active" ? "ok" : a.status === "cooldown" ? "warn" : "error"
+                      }
+                    >
+                      {statusLabel(a.status)}
+                    </Badge>
+                  </td>
+                  <td>
+                    {a.cooldownRemainingMs > 0
+                      ? `${(a.cooldownRemainingMs / 3_600_000).toLocaleString("tr-TR", { maximumFractionDigits: 1 })} sa`
+                      : "—"}
+                  </td>
+                  <td>{a.failCount}</td>
+                  <td>
+                    <Button
+                      variant="danger"
+                      icon="trash"
+                      disabled={!!action.busy}
+                      aria-label={`${a.label} hesabını sil`}
+                      onClick={() => {
+                        action.clearError();
+                        setDeleting(a);
+                      }}
+                    >
+                      Sil
+                    </Button>
+                  </td>
+                </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
+        </Card>
+      )}
+      {adding && (
+        <Dialog
+          title={pending ? "Tarayıcı girişini tamamla" : "Hesap ekle"}
+          busy={!!action.busy}
+          onClose={() => setAdding(false)}
+        >
+          {pending ? (
+            <div className="hmx-form">
+              <Notice>
+                Chrome açıldı. Sağlayıcının sayfasında giriş yapın, ardından aşağıdaki düğmeyle
+                hesabı havuza kaydedin.
+              </Notice>
+              <p>
+                Backend giriş iptal ucu sağlamıyor. Pencereyi kapatsanız da bekleyen işlem korunur;
+                Hesap ekle düğmesiyle tekrar açabilirsiniz.
+              </p>
+              {action.error && <Notice tone="error">{action.error}</Notice>}
+              <Button icon="check" busy={!!action.busy} onClick={finish}>
+                Giriş yaptım — Kaydet
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="hmx-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save();
+              }}
+            >
+              {providers.error && (
+                <ErrorState message={providers.error} retry={() => void providers.reload()} />
+              )}
+              {!providers.data?.length && (
+                <Notice>Önce Sağlayıcılar sekmesinden bir sağlayıcı ekleyin.</Notice>
+              )}
+              <Field label="Sağlayıcı">
+                <select
+                  value={form.providerId}
+                  disabled={!!action.busy}
+                  onChange={(e) => {
+                    setForm((old) => ({
+                      ...old,
+                      providerId: e.target.value,
+                      apiKey: "",
+                      profileDir: "",
+                    }));
+                    setValidation("");
+                  }}
+                >
+                  <option value="">Sağlayıcı seçin</option>
+                  {providers.data?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.id} · {p.authMode === "api-key" ? "API anahtarı" : "Tarayıcı"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Hesap etiketi">
+                <input
+                  value={form.label}
+                  disabled={!!action.busy}
+                  onChange={(e) => setForm((old) => ({ ...old, label: e.target.value }))}
+                  placeholder="Örnek: Kişisel hesabım"
+                />
+              </Field>
+              {selected?.authMode === "api-key" ? (
+                <Field label="API anahtarı">
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    disabled={!!action.busy}
+                    value={form.apiKey}
+                    onChange={(e) => setForm((old) => ({ ...old, apiKey: e.target.value }))}
+                  />
+                </Field>
+              ) : selected ? (
+                <div className="hmx-form">
+                  <strong>Chrome profili</strong>
+                  {profiles.loading && !profiles.data ? (
+                    <Skeleton rows={2} />
+                  ) : profiles.error ? (
+                    <ErrorState message={profiles.error} retry={() => void profiles.reload()} />
+                  ) : !profiles.data?.length ? (
+                    <Empty
+                      icon="server"
+                      title="Chrome profili bulunamadı"
+                      description="Sunucunun çalıştığı bilgisayarda Chrome profili oluşturup tekrar deneyin."
+                      action={
+                        <Button variant="secondary" onClick={() => void profiles.reload()}>
+                          Profilleri yenile
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    profiles.data.map((profile) => (
+                      <label className="hmx-radio" key={profile.dir}>
+                        <input
+                          type="radio"
+                          name="chrome-profile"
+                          disabled={!!action.busy}
+                          checked={form.profileDir === profile.dir}
+                          onChange={() => setForm((old) => ({ ...old, profileDir: profile.dir }))}
+                        />
+                        <span>
+                          {profile.name}
+                          {profile.email ? ` · ${profile.email}` : ""}
+                          <br />
+                          <span className="hmx-muted hmx-mono">{profile.dir}</span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              ) : null}
+              {validation && <Notice tone="error">{validation}</Notice>}
+              {action.error && <Notice tone="error">{action.error}</Notice>}
+              <Button
+                type="submit"
+                icon={selected?.authMode === "api-key" ? "check" : "link"}
+                busy={!!action.busy}
+                disabled={!providers.data?.length}
+              >
+                {selected?.authMode === "api-key" ? "Hesabı kaydet" : "Chrome'u aç ve giriş yap"}
+              </Button>
+            </form>
+          )}
+        </Dialog>
+      )}
+      {deleting && (
+        <DeleteDialog
+          error={action.error}
+          label={deleting.label}
+          busy={!!action.busy}
+          onClose={() => setDeleting(null)}
+          onDelete={remove}
+        />
+      )}
+      <Toast message={action.notice} onClose={() => action.setNotice("")} />
+    </>
+  );
+}
+function RoutingTab(): JSX.Element {
+  const routing = useResource<Routing>("/api/routing");
+  const data = routing.data;
+  const ts = data?.tokenSaver;
+  if (routing.loading && !data) return <Skeleton />;
+  if (routing.error)
+    return <ErrorState message={routing.error} retry={() => void routing.reload()} />;
+  if (!data || KINDS.every((kind) => !data.order[kind]?.length))
+    return (
+      <Empty
+        title="Yönlendirme zinciri boş"
+        description="Bir sağlayıcı eklediğinizde türlere göre yedek rotalar burada görünür."
+        action={
+          <Button onClick={() => useUiStore.getState().setPage("settings")}>
+            Yönlendirme ayarlarını aç
+          </Button>
+        }
+      />
+    );
+  return (
+    <>
+      <Card
+        title="Yedek sağlayıcı zincirleri"
+        description="Öncelik: tercih edilen sağlayıcı → abonelik → ekonomik → ücretsiz."
+        actions={
+          <Button
+            icon="refresh"
+            variant="secondary"
+            busy={routing.loading}
+            onClick={() => void routing.reload()}
+          >
+            Yenile
+          </Button>
+        }
+      >
+        {KINDS.map((kind) => (
+          <div className="hmx-route" key={kind}>
+            <strong>{kindLabel(kind)}</strong>
+            {data.order[kind]?.length ? (
+              data.order[kind].map((id, i) => (
+                <span className="hmx-actions" key={id}>
+                  {i > 0 && <span aria-hidden="true">→</span>}
+                  <Badge>{id}</Badge>
+                </span>
+              ))
+            ) : (
+              <span className="hmx-muted">Sağlayıcı tanımlanmamış</span>
+            )}
+          </div>
+        ))}
+        <p>Devre kesici, art arda hatalarda sağlayıcıyı geçici olarak rotadan çıkarır.</p>
+      </Card>
+      <Card
+        title="Token tasarrufu"
+        description="Sunucunun mevcut oturum için bildirdiği sıkıştırma istatistikleri."
+      >
+        <div className="hmx-grid">
+          <div>
+            <span className="hmx-muted">Tasarruf oranı</span>
+            <div className="hmx-stat">%{Math.round((ts?.savedRatio ?? 0) * 100)}</div>
+          </div>
+          <div>
+            <span className="hmx-muted">Sıkıştırılan çıktı</span>
+            <div className="hmx-stat">{ts?.compressedCount ?? 0}</div>
+          </div>
+          <div>
+            <span className="hmx-muted">Token değişimi</span>
+            <p>
+              {ts?.beforeTokens ?? 0} → {ts?.afterTokens ?? 0}
+            </p>
+          </div>
         </div>
+      </Card>
+    </>
+  );
+}
+function HealthTab(): JSX.Element {
+  const health = useResource<Health>("/api/health");
+  const routing = useResource<Routing>("/api/routing");
+  const reload = async () => {
+    await Promise.all([health.reload(), routing.reload()]);
+  };
+  if ((health.loading && !health.data) || (routing.loading && !routing.data)) return <Skeleton />;
+  if (health.error || routing.error)
+    return <ErrorState message={health.error || routing.error} retry={() => void reload()} />;
+  if (!health.data || !routing.data)
+    return (
+      <Empty
+        title="Sağlık verisi yok"
+        description="Dashboard durumunu yeniden sorgulayın."
+        action={
+          <Button icon="refresh" onClick={() => void reload()}>
+            Yeniden kontrol et
+          </Button>
+        }
+      />
+    );
+  const bad = routing.data.accounts.filter((a) => a.status !== "active");
+  const circuits = routing.data.circuits.filter((c) => c.open);
+  return (
+    <>
+      <div className="hmx-actions">
+        <Button
+          icon="refresh"
+          variant="secondary"
+          busy={health.loading || routing.loading}
+          onClick={() => void reload()}
+        >
+          Durumu yenile
+        </Button>
+      </div>
+      <div className="hmx-grid">
+        <Card title="Sistem">
+          <p>
+            Dashboard:{" "}
+            <Badge tone={health.data.ok ? "ok" : "error"}>
+              {health.data.ok ? "Hazır" : "Hata"}
+            </Badge>
+          </p>
+          <p>
+            ffmpeg:{" "}
+            <Badge tone={health.data.ffmpeg ? "ok" : "error"}>
+              {health.data.ffmpeg ? "Kullanılabilir" : "Bulunamadı"}
+            </Badge>
+          </p>
+          <p>LLM: yapılandırma mevcut; bağlantıyı Modeller sayfasında test edin.</p>
+        </Card>
+        <Card title="Hesap durumu">
+          <div className="hmx-stat">{health.data.quota?.accounts ?? 0}</div>
+          <p>
+            {health.data.quota?.cooldown ?? 0} beklemede · {health.data.quota?.error ?? 0} hatalı
+          </p>
+        </Card>
+        <Card title="Devre kesici">
+          <div className="hmx-stat">{circuits.length}</div>
+          <p>Açık devre · geçici olarak atlanan sağlayıcı</p>
+          {circuits.map((c) => (
+            <Badge tone="error" key={c.id}>
+              {c.id}
+            </Badge>
+          ))}
+        </Card>
+      </div>
+      {bad.length ? (
+        <Card title="Dikkat gerektiren hesaplar">
+          <Table label="Sorunlu hesaplar">
+            <thead>
+              <tr>
+                <th scope="col">Hesap</th>
+                <th scope="col">Sağlayıcı</th>
+                <th scope="col">Durum</th>
+                <th scope="col">Not</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bad.map((a) => (
+                <tr key={`${a.provider}:${a.id}`}>
+                  <td>{a.label}</td>
+                  <td className="hmx-mono">{a.provider}</td>
+                  <td>
+                    <Badge tone={a.status === "cooldown" ? "warn" : "error"}>
+                      {statusLabel(a.status)}
+                    </Badge>
+                  </td>
+                  <td>{a.notes ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      ) : (
+        <Notice tone="ok">
+          Dikkat gerektiren hesap kaydı yok. Bu, tüm sağlayıcı bağlantılarının test edildiği
+          anlamına gelmez.
+        </Notice>
       )}
     </>
   );
